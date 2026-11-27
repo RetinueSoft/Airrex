@@ -9,16 +9,47 @@ A mobile-friendly flight comparison web app (Skyscanner-style).
 
 ## Run it
 
-Requires Node.js 22.18+.
+Requires Node.js 22.18+ and **PostgreSQL 18+** (agent accounts, logins and quotes). Flight search works without
+the database; only the agent pages need it.
+
+1. Copy `.env.example` to `.env` and set the `POSTGRES_*` values.
+2. Start a database, either way:
+   - **Docker (same as the server):** set `POSTGRES_PASSWORD` in `.env`, then `npm run db:up`. This starts
+     `airrex-postgres` on `127.0.0.1:5436` (the `.env.example` defaults).
+   - **A Postgres you already have:** create a database named `airrex` and point `POSTGRES_HOST/PORT/USER/PASSWORD` at it.
+3. Run the app:
 
 ```powershell
 npm install
 npm run dev
 ```
 
-Open http://localhost:5173. The API runs on port 8787, and Vite proxies `/api` to it.
+Open http://localhost:5173. The API runs on port 8787, and Vite proxies `/api` to it. Tables are created
+automatically on startup. The server prints `PostgreSQL ready`, or the reason it can't connect.
+
+**Moving from the old SQLite file** (`.data/airrex.db`, used before the switch to Postgres): run
+`npm run import-sqlite` once. It copies agents, quotes and active logins, keeping their ids. It refuses to
+run if Postgres already has agents; add `-- --replace` to overwrite them.
 
 Production: `npm run build` then `npm start`. A single Node server then serves the API and the built app on `PORT` (default 8787).
+
+### Server (Docker, RetinueSoft VPS)
+
+`docker-compose.yml` follows the other RetinueSoft apps (MotoC2B, ReXL):
+
+| Container | Image | Port (127.0.0.1 only) |
+|---|---|---|
+| `airrex-postgres` | `postgres:18`, user `postgres`, database `airrex` | `POSTGRES_HOST_PORT` (5436) for SSH-tunnel access |
+| `airrex-app` | `ghcr.io/retinuesoft/airrex` (Dockerfile in this repo) | `APP_HOST_PORT` (18087), proxied by the common Caddy |
+
+`POSTGRES_PASSWORD` comes from the shared `/root/common/.env`, and the app's settings from
+`/root/common/env/airrex.env` (created from `.env.example`). To be deployed and backed up like the other apps,
+AirRex still needs:
+- a line in VpsSetup `apps.conf` (`airrex  RetinueSoft/Airrex  app  postgres  airrex-postgres  @POSTGRES_DB  postgres  -`);
+- `caddy/sites/airrex.caddy` and a public port (8087 is free) in `PORTS.md`;
+- `deploy/update.sh` and a GitHub Actions workflow that builds the image.
+
+Admin on the server: `app-compose airrex exec app node server/admin.ts list`.
 
 ## Flight data
 
@@ -80,7 +111,8 @@ npm run admin -- delete agent@example.com
 
 Set `VITE_AGENT_PLAN_PRICE`, `VITE_SUPPORT_WHATSAPP` (or `VITE_SUPPORT_EMAIL`) in `.env` so agents see your price and a **Renew** button.
 
-**Data.** Accounts, sessions and quotes are stored in SQLite at `.data/airrex.db` (git-ignored). Back this file up. Passwords are hashed with scrypt. Sessions use an HttpOnly cookie and expire after 30 days. Logins are rate-limited per IP. Behind a reverse proxy, set `TRUST_PROXY=true`. In production, set `NODE_ENV=production` so cookies are marked Secure, and serve the site over HTTPS.
+**Data.** Accounts, sessions and quotes are stored in PostgreSQL (tables `agents`, `sessions`, `quotes`; created and
+upgraded automatically by `server/db.ts`). On the server, `backup-db.sh` backs it up with the other apps once AirRex is in `apps.conf`. Passwords are hashed with scrypt. Sessions use an HttpOnly cookie and expire after 30 days. Logins are rate-limited per IP. Behind a reverse proxy, set `TRUST_PROXY=true`. In production, set `NODE_ENV=production` so cookies are marked Secure, and serve the site over HTTPS.
 
 ## Project layout
 

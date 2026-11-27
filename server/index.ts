@@ -30,6 +30,8 @@ import { createSerpApiProvider, SerpApiError } from './providers/serpapi.ts';
 import type { FlightProvider } from './providers/types.ts';
 import { createCache } from './cache.ts';
 import { handleAgentApi } from './agentApi.ts';
+import { migrate } from './db.ts';
+import { startSessionCleanup } from './auth.ts';
 
 // In dev (`--dev`) the API always uses API_PORT/8787, because PORT belongs to the Vite web server there.
 const PORT = Number(process.argv.includes('--dev') ? (process.env.API_PORT ?? 8787) : (process.env.PORT ?? 8787));
@@ -297,3 +299,9 @@ server.listen(PORT, () => {
     `AirRex API on http://localhost:${PORT}  (data: ${provider.name}${provider.isDemo ? ', demo/test' : ''}; cache ${cacheMinutes} min${FALLBACK_TO_DEMO ? '; demo fallback on' : ''})`,
   );
 });
+
+// PostgreSQL (agent accounts and quotes). Flight search works without it; agent pages answer 503 until it is up.
+migrate()
+  .then(() => console.log('PostgreSQL ready'))
+  .catch((err) => console.error(`PostgreSQL not reachable yet (${err.message}); agent pages will retry on each request`));
+startSessionCleanup();

@@ -1,0 +1,65 @@
+# AirRex on Linux: PostgreSQL 18 + the app (Node: API + built web app in one container).
+# HTTPS/domain: the server's common Caddy (VpsSetup caddy/sites/airrex.caddy) proxies to 127.0.0.1:APP_HOST_PORT.
+# Settings: /root/common/.env (shared, POSTGRES_PASSWORD) + /root/common/env/airrex.env, passed by update.sh / app-compose.
+#
+# Local development: start only the database, then `npm run dev`:
+#   docker compose up -d postgres        (needs POSTGRES_PASSWORD in .env)
+
+name: airrex
+
+services:
+  postgres:
+    image: postgres:18
+    container_name: airrex-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}"
+      POSTGRES_DB: "${POSTGRES_DB:-airrex}"
+      TZ: "${TZ:-UTC}"                     # only affects log timestamps
+    # All timestamps are stored as timestamptz (UTC); keep the database on UTC.
+    command: ["postgres", "-c", "timezone=UTC"]
+    volumes:
+      - postgres-data:/var/lib/postgresql   # database files (PostgreSQL 18 image layout)
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5436}:5432"   # only reachable from the server itself (SSH tunnel for pgAdmin/DBeaver)
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ${POSTGRES_DB:-airrex}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  app:
+    # Published by GitHub Actions from the release branch. Local build instead: docker compose build app
+    image: ghcr.io/retinuesoft/airrex:${APP_IMAGE_TAG:-latest}
+    build: .
+    container_name: airrex-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: "8080"
+      TRUST_PROXY: "true"                  # behind the common Caddy (real client IP, HTTPS)
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: "${POSTGRES_DB:-airrex}"
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+      SERPAPI_API_KEY: "${SERPAPI_API_KEY:-}"
+      SERPAPI_CURRENCY: "${SERPAPI_CURRENCY:-INR}"
+      SEARCH_CACHE_MINUTES: "${SEARCH_CACHE_MINUTES:-720}"
+      FALLBACK_TO_DEMO: "${FALLBACK_TO_DEMO:-false}"
+      TRAVELPAYOUTS_TOKEN: "${TRAVELPAYOUTS_TOKEN:-}"
+      AGENT_TRIAL_DAYS: "${AGENT_TRIAL_DAYS:-30}"
+      MAX_QUOTES_PER_AGENT: "${MAX_QUOTES_PER_AGENT:-20}"
+      TZ: "${TZ:-UTC}"
+    volumes:
+      - search-cache:/app/.cache           # saved search results survive restarts (saves SerpApi searches)
+    ports:
+      - "127.0.0.1:${APP_HOST_PORT:-18087}:8080"   # only the server's common Caddy reaches it
+
+volumes:
+  postgres-data:
+  search-cache:

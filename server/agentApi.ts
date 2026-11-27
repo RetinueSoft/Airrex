@@ -6,13 +6,14 @@
 //   PUT    /api/agent/profile       { ...AgentProfile editable fields, logo as data: URL }
 //   POST   /api/agent/password      { currentPassword, newPassword }
 //   GET    /api/agent/quotes
-//   POST   /api/agent/quotes        { customerName, customerPhone, data }
+//   POST   /api/agent/quotes        { customerName, customerPhone, data, status }
+//   PUT    /api/agent/quotes/:id    { customerName, customerPhone, data, status }
 //   DELETE /api/agent/quotes/:id
 // Writes require Content-Type: application/json. Combined with SameSite=Lax cookies this blocks
 // cross-site form posts (CSRF).
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { db, type AgentRow } from './db.ts';
+import { exec, migrate, one, many, tx, type AgentRow, type QuoteRow } from './db.ts';
 import {
   clientIp,
   createSession,
@@ -88,21 +89,24 @@ function toProfile(a: AgentRow): AgentProfile {
     brandColor: a.brand_color,
     ticketFooter: a.ticket_footer,
     defaultMarkup: a.default_markup,
-    gstOnCharge: a.gst_on_charge === 1,
-    paymentFees: parseFees(a.payment_fees),
-    trialEndsAt: a.trial_ends_at,
-    paidUntil: a.paid_until,
+    gstOnCharge: a.gst_on_charge,
+    paymentFees: a.payment_fees && typeof a.payment_fees === 'object' ? a.payment_fees : {},
+    trialEndsAt: a.trial_ends_at.toISOString(),
+    paidUntil: a.paid_until ? a.paid_until.toISOString() : null,
     active: subscriptionActive(a),
   };
 }
 
-function parseFees(json: string): Record<string, number> {
-  try {
-    const v = JSON.parse(json);
-    return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
-  } catch {
-    return {};
-  }
+function toQuote(r: QuoteRow): SavedQuote {
+  return {
+    id: r.id,
+    customerName: r.customer_name,
+    customerPhone: r.customer_phone,
+    createdAt: r.created_at.toISOString(),
+    updatedAt: r.updated_at ? r.updated_at.toISOString() : undefined,
+    status: r.status === 'draft' ? 'draft' : 'sent',
+    data: r.data as SavedQuote['data'],
+  };
 }
 
 /** { default?: n, "6E"?: n, ... } with whole-rupee amounts 0–5000. Empty/blank entries are dropped. */
@@ -135,8 +139,8 @@ function quoteFields(body: Record<string, unknown>) {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
-function requireAgent(req: IncomingMessage) {
-  const a = currentAgent(req);
+async function requireAgent(req: IncomingMessage) {
+  const a = await currentAgent(req);
   if (!a) throw new HttpError(401, 'Please log in');
   return a;
 }
@@ -145,12 +149,19 @@ function requireActive(a: AgentRow) {
   if (!subscriptionActive(a)) throw new HttpError(402, 'Your AirRex subscription has ended. Please renew to keep using agent tools.');
 }
 
+
 /** Returns true when the request was an agent API call (handled here). */
 export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, url: URL): Promise<boolean> {
   if (!url.pathname.startsWith('/api/agent/')) return false;
   const route = `${req.method} ${url.pathname.replace(/\/\d+$/, '/:id')}`;
 
   try {
+    try {
+      await migrate();
+    } catch (err) {
+      console.error('database unavailable:', err instanceof Error ? err.message : err);
+      throw new HttpError(503, 'Agent service is temporarily unavailable. Please try again in a minute.');
+    }
     switch (route) {
       case 'POST /api/agent/signup': {
         const body = await readJson(req);
@@ -160,21 +171,26 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
         if (!EMAIL_RE.test(email)) throw new HttpError(400, 'Enter a valid email');
         if (password.length < 8 || password.length > 200) throw new HttpError(400, 'Password must be at least 8 characters');
         if (!agencyName) throw new HttpError(400, 'Enter your agency name');
-        const exists = db.prepare('SELECT 1 FROM agents WHERE email = ?').get(email);
-        if (exists) throw new HttpError(409, 'An account with this email already exists. Please log in.');
+        if (await one('SELECT 1 FROM agents WHERE lower(email) = $1', [email])) {
+          throw new HttpError(409, 'An account with this email already exists. Please log in.');
+        }
 
-        const now = new Date();
-        const trialEnds = new Date(now.getTime() + TRIAL_DAYS * 86400_000);
+        const trialEnds = new Date(Date.now() + TRIAL_DAYS * 86400_000);
         const phone = str(body.phone, 20, 'Phone');
-        const result = db
-          .prepare(
-            `INSERT INTO agents (email, password_hash, contact_name, agency_name, phone, whatsapp, created_at, trial_ends_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          )
-          .run(email, hashPassword(password), str(body.contactName, 120, 'Name'), agencyName, phone, phone, now.toISOString(), trialEnds.toISOString());
-        createSession(req, res, Number(result.lastInsertRowid));
-        const agent = db.prepare('SELECT * FROM agents WHERE id = ?').get(result.lastInsertRowid) as unknown as AgentRow;
-        send(res, 201, toProfile(agent));
+        let agent: AgentRow | undefined;
+        try {
+          agent = await one<AgentRow>(
+            `INSERT INTO agents (email, password_hash, contact_name, agency_name, phone, whatsapp, trial_ends_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+            [email, hashPassword(password), str(body.contactName, 120, 'Name'), agencyName, phone, phone, trialEnds],
+          );
+        } catch (err) {
+          // Two sign-ups with the same email at the same moment: the unique index catches the second.
+          if ((err as { code?: string }).code === '23505') throw new HttpError(409, 'An account with this email already exists. Please log in.');
+          throw err;
+        }
+        await createSession(req, res, agent!.id);
+        send(res, 201, toProfile(agent!));
         return true;
       }
 
@@ -184,30 +200,30 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
         const body = await readJson(req);
         const email = str(body.email, 200, 'Email').toLowerCase();
         const password = typeof body.password === 'string' ? body.password : '';
-        const agent = db.prepare('SELECT * FROM agents WHERE email = ?').get(email) as AgentRow | undefined;
+        const agent = await one<AgentRow>('SELECT * FROM agents WHERE lower(email) = $1', [email]);
         if (!agent || !verifyPassword(password, agent.password_hash)) {
           recordFailure(ip);
           throw new HttpError(401, 'Wrong email or password');
         }
-        createSession(req, res, agent.id);
+        await createSession(req, res, agent.id);
         send(res, 200, toProfile(agent));
         return true;
       }
 
       case 'POST /api/agent/logout': {
-        destroySession(req, res);
+        await destroySession(req, res);
         send(res, 200, { ok: true });
         return true;
       }
 
       case 'GET /api/agent/me': {
-        const a = currentAgent(req);
+        const a = await currentAgent(req);
         send(res, a ? 200 : 401, a ? toProfile(a) : { error: 'Not logged in' });
         return true;
       }
 
       case 'PUT /api/agent/profile': {
-        const a = requireAgent(req);
+        const a = await requireAgent(req);
         const body = await readJson(req);
         const logo = str(body.logo, MAX_LOGO, 'Logo');
         if (logo && !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(logo)) {
@@ -222,105 +238,102 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
         const gstin = str(body.gstin, 15, 'GSTIN').toUpperCase();
         if (gstin && !/^[0-9A-Z]{15}$/.test(gstin)) throw new HttpError(400, 'GSTIN must be 15 letters/numbers');
 
-        db.prepare(
-          `UPDATE agents SET contact_name = ?, agency_name = ?, phone = ?, whatsapp = ?, address = ?, city = ?,
-             gstin = ?, website = ?, logo = ?, brand_color = ?, ticket_footer = ?, default_markup = ?, gst_on_charge = ?, payment_fees = ? WHERE id = ?`,
-        ).run(
-          str(body.contactName, 120, 'Name'),
-          agencyName,
-          str(body.phone, 20, 'Phone'),
-          str(body.whatsapp, 20, 'WhatsApp number'),
-          str(body.address, 300, 'Address'),
-          str(body.city, 80, 'City'),
-          gstin,
-          str(body.website, 200, 'Website'),
-          logo,
-          brandColor,
-          str(body.ticketFooter, 400, 'Ticket footer'),
-          markup,
-          body.gstOnCharge === true ? 1 : 0,
-          JSON.stringify(validateFees(body.paymentFees)),
-          a.id,
+        const updated = await one<AgentRow>(
+          `UPDATE agents SET contact_name = $1, agency_name = $2, phone = $3, whatsapp = $4, address = $5, city = $6,
+             gstin = $7, website = $8, logo = $9, brand_color = $10, ticket_footer = $11, default_markup = $12,
+             gst_on_charge = $13, payment_fees = $14::jsonb
+           WHERE id = $15 RETURNING *`,
+          [
+            str(body.contactName, 120, 'Name'),
+            agencyName,
+            str(body.phone, 20, 'Phone'),
+            str(body.whatsapp, 20, 'WhatsApp number'),
+            str(body.address, 300, 'Address'),
+            str(body.city, 80, 'City'),
+            gstin,
+            str(body.website, 200, 'Website'),
+            logo,
+            brandColor,
+            str(body.ticketFooter, 400, 'Ticket footer'),
+            markup,
+            body.gstOnCharge === true,
+            JSON.stringify(validateFees(body.paymentFees)),
+            a.id,
+          ],
         );
-        send(res, 200, toProfile(db.prepare('SELECT * FROM agents WHERE id = ?').get(a.id) as unknown as AgentRow));
+        send(res, 200, toProfile(updated!));
         return true;
       }
 
       case 'POST /api/agent/password': {
-        const a = requireAgent(req);
+        const a = await requireAgent(req);
         const body = await readJson(req);
         const current = typeof body.currentPassword === 'string' ? body.currentPassword : '';
         const next = typeof body.newPassword === 'string' ? body.newPassword : '';
         if (!verifyPassword(current, a.password_hash)) throw new HttpError(400, 'Current password is wrong');
         if (next.length < 8 || next.length > 200) throw new HttpError(400, 'New password must be at least 8 characters');
-        db.prepare('UPDATE agents SET password_hash = ? WHERE id = ?').run(hashPassword(next), a.id);
-        // Sign out other devices, keep this one.
-        db.prepare('DELETE FROM sessions WHERE agent_id = ?').run(a.id);
-        createSession(req, res, a.id);
+        await tx(async (c) => {
+          await c.query('UPDATE agents SET password_hash = $1 WHERE id = $2', [hashPassword(next), a.id]);
+          // Sign out other devices; a new session for this one is created below.
+          await c.query('DELETE FROM sessions WHERE agent_id = $1', [a.id]);
+        });
+        await createSession(req, res, a.id);
         send(res, 200, { ok: true });
         return true;
       }
 
       case 'GET /api/agent/quotes': {
-        const a = requireAgent(req);
-        const rows = db
-          .prepare(
-            `SELECT id, customer_name, customer_phone, data, created_at, updated_at, status FROM quotes
-             WHERE agent_id = ? ORDER BY COALESCE(updated_at, created_at) DESC LIMIT 200`,
-          )
-          .all(a.id) as { id: number; customer_name: string; customer_phone: string; data: string; created_at: string; updated_at: string | null; status: string }[];
-        const quotes: SavedQuote[] = rows.map((r) => ({
-          id: r.id,
-          customerName: r.customer_name,
-          customerPhone: r.customer_phone,
-          createdAt: r.created_at,
-          updatedAt: r.updated_at ?? undefined,
-          status: r.status === 'draft' ? 'draft' : 'sent',
-          data: JSON.parse(r.data),
-        }));
-        send(res, 200, quotes);
+        const a = await requireAgent(req);
+        const rows = await many<QuoteRow>(
+          `SELECT * FROM quotes WHERE agent_id = $1 ORDER BY COALESCE(updated_at, created_at) DESC, id DESC LIMIT 200`,
+          [a.id],
+        );
+        send(res, 200, rows.map(toQuote));
         return true;
       }
 
       case 'POST /api/agent/quotes': {
-        const a = requireAgent(req);
+        const a = await requireAgent(req);
         requireActive(a);
-        const body = await readJson(req);
-        const q = quoteFields(body);
-        const now = new Date().toISOString();
-        const result = db
-          .prepare('INSERT INTO quotes (agent_id, customer_name, customer_phone, data, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-          .run(a.id, q.customerName, q.customerPhone, q.data, q.status, now, now);
-        // Keep only the agency's latest MAX_QUOTES quotes (by last created/edited); older ones are removed.
-        const removed = db
-          .prepare(
-            `DELETE FROM quotes WHERE agent_id = ? AND id NOT IN (
-               SELECT id FROM quotes WHERE agent_id = ? ORDER BY COALESCE(updated_at, created_at) DESC, id DESC LIMIT ?
+        const q = quoteFields(await readJson(req));
+        const result = await tx(async (c) => {
+          const ins = await c.query<{ id: number }>(
+            `INSERT INTO quotes (agent_id, customer_name, customer_phone, data, status, created_at, updated_at)
+             VALUES ($1, $2, $3, $4::jsonb, $5, now(), now()) RETURNING id`,
+            [a.id, q.customerName, q.customerPhone, q.data, q.status],
+          );
+          // Keep only the agency's latest MAX_QUOTES quotes (by last created/edited); older ones are removed.
+          const del = await c.query(
+            `DELETE FROM quotes WHERE agent_id = $1 AND id NOT IN (
+               SELECT id FROM quotes WHERE agent_id = $1 ORDER BY COALESCE(updated_at, created_at) DESC, id DESC LIMIT $2
              )`,
-          )
-          .run(a.id, a.id, MAX_QUOTES);
-        send(res, 201, { id: Number(result.lastInsertRowid), removedOld: Number(removed.changes) });
+            [a.id, MAX_QUOTES],
+          );
+          return { id: ins.rows[0].id, removedOld: del.rowCount ?? 0 };
+        });
+        send(res, 201, result);
         return true;
       }
 
       case 'PUT /api/agent/quotes/:id': {
-        const a = requireAgent(req);
+        const a = await requireAgent(req);
         requireActive(a);
         const id = Number(url.pathname.split('/').pop());
-        const body = await readJson(req);
-        const q = quoteFields(body);
-        const r = db
-          .prepare('UPDATE quotes SET customer_name = ?, customer_phone = ?, data = ?, status = ?, updated_at = ? WHERE id = ? AND agent_id = ?')
-          .run(q.customerName, q.customerPhone, q.data, q.status, new Date().toISOString(), id, a.id);
-        if (Number(r.changes) === 0) throw new HttpError(404, 'Quote not found');
+        const q = quoteFields(await readJson(req));
+        const changed = await exec(
+          `UPDATE quotes SET customer_name = $1, customer_phone = $2, data = $3::jsonb, status = $4, updated_at = now()
+           WHERE id = $5 AND agent_id = $6`,
+          [q.customerName, q.customerPhone, q.data, q.status, id, a.id],
+        );
+        if (changed === 0) throw new HttpError(404, 'Quote not found');
         send(res, 200, { id });
         return true;
       }
 
       case 'DELETE /api/agent/quotes/:id': {
-        const a = requireAgent(req);
+        const a = await requireAgent(req);
         const id = Number(url.pathname.split('/').pop());
-        db.prepare('DELETE FROM quotes WHERE id = ? AND agent_id = ?').run(id, a.id);
+        await exec('DELETE FROM quotes WHERE id = $1 AND agent_id = $2', [id, a.id]);
         send(res, 200, { ok: true });
         return true;
       }
