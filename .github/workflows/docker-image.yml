@@ -1,0 +1,73 @@
+# Builds the AirRex image and publishes it to GitHub Container Registry (GHCR):
+#   ghcr.io/retinuesoft/airrex:latest        newest build of the release branch
+#   ghcr.io/retinuesoft/airrex:sha-<commit>  every build, for rolling back to an exact version
+# The server then updates with /root/airrex/update.sh (deploy/update.sh).
+#
+# Web-app settings are fixed at build time. Set them as repository variables (Settings → Secrets and variables →
+# Actions → Variables) if they differ from the defaults: AIRREX_SITE_URL, VITE_AGENT_PLAN_PRICE,
+# VITE_AGENT_TRIAL_DAYS, VITE_SUPPORT_WHATSAPP, VITE_SUPPORT_EMAIL, VITE_MAX_QUOTES_PER_AGENT.
+name: Docker image
+
+on:
+  push:
+    branches: [release]
+    paths-ignore:
+      - '**.md'
+      - 'deploy/**'
+      - '.env.example'
+  workflow_dispatch:          # "Run workflow" button in the Actions tab
+
+permissions:
+  contents: read
+  packages: write             # push to ghcr.io with the built-in GITHUB_TOKEN
+
+concurrency:
+  group: docker-image-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE: ghcr.io/retinuesoft/airrex
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix=sha-
+          labels: |
+            org.opencontainers.image.title=AirRex
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            AIRREX_SITE_URL=${{ vars.AIRREX_SITE_URL }}
+            VITE_AGENT_PLAN_PRICE=${{ vars.VITE_AGENT_PLAN_PRICE }}
+            VITE_AGENT_TRIAL_DAYS=${{ vars.VITE_AGENT_TRIAL_DAYS }}
+            VITE_SUPPORT_WHATSAPP=${{ vars.VITE_SUPPORT_WHATSAPP }}
+            VITE_SUPPORT_EMAIL=${{ vars.VITE_SUPPORT_EMAIL }}
+            VITE_MAX_QUOTES_PER_AGENT=${{ vars.VITE_MAX_QUOTES_PER_AGENT }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
