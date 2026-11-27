@@ -9,7 +9,6 @@ import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import type { AgentProfile } from '../../shared/types.ts';
 import { useAgent } from '../lib/agent.tsx';
 import Icon from '../components/Icon.tsx';
-import { TRIAL_DAYS } from '../lib/config.ts';
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -482,7 +481,7 @@ export default function TicketPrintPage() {
             <div className="grow">
               <b>Travel agent?</b> Print tickets with your agency logo and contact details, and hide the airline fare in one tap.
             </div>
-            <Link className="btn primary" to="/agent/login">Try free for {TRIAL_DAYS} days</Link>
+            <Link className="btn primary" to="/agent/login">Sign up as an agent</Link>
           </div>
         )}
         {agent && !agent.active && (

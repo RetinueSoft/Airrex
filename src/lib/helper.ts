@@ -109,3 +109,14 @@ export function sendTripToHelper(trip: HelperTrip) {
 export function updateHelperPassengers(trip: HelperTrip) {
   if (version && lastSentKey && lastSentKey === tripKey(trip)) sendTripToHelper(trip);
 }
+
+/** On logout: the AirRex Helper forgets the trip (and its passport details); this tab forgets which flight it sent. */
+export function clearHelper() {
+  lastSentKey = '';
+  try {
+    sessionStorage.removeItem(SENT_KEY);
+  } catch {
+    /* ignore */
+  }
+  window.postMessage({ type: 'airrex:logout' }, location.origin);
+}

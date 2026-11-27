@@ -15,7 +15,7 @@ function TripList({ trips, canQuote, onQuote, onRemove }: {
   trips: SavedTrip[];
   canQuote: boolean;
   onQuote: (t: SavedTrip) => void;
-  onRemove: (id: string) => void;
+  onRemove: (id: number) => void;
 }) {
   if (trips.length === 0) {
     return (
@@ -32,10 +32,10 @@ function TripRows({ trips, canQuote, onQuote, onRemove, today }: {
   trips: SavedTrip[];
   canQuote: boolean;
   onQuote: (t: SavedTrip) => void;
-  onRemove: (id: string) => void;
+  onRemove: (id: number) => void;
   today: string;
 }) {
-  const [reporting, setReporting] = useState<string | null>(null);
+  const [reporting, setReporting] = useState<number | null>(null);
   return (
     <div className="trip-list">
       {trips.map((t) => {
@@ -82,7 +82,10 @@ function TripRows({ trips, canQuote, onQuote, onRemove, today }: {
 export default function TripsPage() {
   const { agent } = useAgent();
   const [params, setParams] = useSearchParams();
-  const [trips, setTrips] = useState(loadTrips);
+  const [trips, setTrips] = useState<SavedTrip[]>([]);
+  useEffect(() => {
+    loadTrips().then(setTrips);
+  }, []);
   const [quotes, setQuotes] = useState<SavedQuote[] | null>(null);
   const [quoteError, setQuoteError] = useState('');
   const [quoting, setQuoting] = useState<SavedTrip | null>(null);
@@ -129,7 +132,7 @@ export default function TripsPage() {
           trips={trips}
           canQuote={!!agent?.active}
           onQuote={setQuoting}
-          onRemove={(id) => { removeTrip(id); setTrips(loadTrips()); }}
+          onRemove={(id) => { setTrips((t) => t.filter((x) => x.id !== id)); removeTrip(id); }}
         />
       ) : (
         <QuoteBrowser quotes={quotes} error={quoteError} />

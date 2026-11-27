@@ -33,8 +33,12 @@ import type { FlightProvider } from './providers/types.ts';
 import { createCache } from './cache.ts';
 import { handleAgentApi } from './agentApi.ts';
 import { handleReportsApi } from './reportsApi.ts';
+import { announceAdminSetup, handleSiteAdminApi } from './siteAdmin.ts';
 import { migrate } from './db.ts';
-import { startSessionCleanup } from './auth.ts';
+import { currentAgent, startSessionCleanup, subscriptionActive } from './auth.ts';
+
+/** API routes that need a logged-in, active agent. */
+const PROTECTED_API = new Set(['/api/airports', '/api/search', '/api/booking-options', '/api/calendar']);
 
 // In dev (`--dev`) the API always uses API_PORT/8787, because PORT belongs to the Vite web server there.
 const PORT = Number(process.argv.includes('--dev') ? (process.env.API_PORT ?? 8787) : (process.env.PORT ?? 8787));
@@ -230,8 +234,20 @@ const MIME: Record<string, string> = {
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
   try {
+    if (await handleSiteAdminApi(req, res, url)) return;
     if (await handleAgentApi(req, res, url)) return;
     if (await handleReportsApi(req, res, url)) return;
+
+    // AirRex is for logged-in, activated agencies only: flight data needs an active agent login (this also keeps
+    // strangers from using up the SerpApi searches).
+    if (PROTECTED_API.has(url.pathname)) {
+      const agent = await migrate()
+        .then(() => currentAgent(req))
+        .catch(() => null);
+      if (agent === null) return json(res, 503, { error: 'Service is temporarily unavailable. Please try again in a minute.' });
+      if (!agent) return json(res, 401, { error: 'Please log in' });
+      if (!subscriptionActive(agent)) return json(res, 402, { error: 'Your AirRex account is not active. Please contact AirRex.' });
+    }
 
     if (url.pathname === '/api/airports') {
       const q = (url.searchParams.get('q') ?? '').trim().toLowerCase();
@@ -325,3 +341,5 @@ migrate()
   .then(() => console.log('PostgreSQL ready'))
   .catch((err) => console.error(`PostgreSQL not reachable yet (${err.message}); agent pages will retry on each request`));
 startSessionCleanup();
+// Until the site admin password is set, print the one-time setup code for /site-admin.
+announceAdminSetup().catch(() => {});

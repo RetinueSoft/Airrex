@@ -1,6 +1,6 @@
 // Agent API:
-//   POST   /api/agent/signup        { email, password, agencyName, contactName, phone }
-//   POST   /api/agent/login         { email, password }
+//   POST   /api/agent/signup        { mobile, password, agencyName, contactName, email? }
+//   POST   /api/agent/login         { mobile, password }
 //   POST   /api/agent/logout
 //   GET    /api/agent/me
 //   PUT    /api/agent/profile       { ...AgentProfile editable fields, logo as data: URL }
@@ -12,6 +12,8 @@
 // Writes require Content-Type: application/json. Combined with SameSite=Lax cookies this blocks
 // cross-site form posts (CSRF).
 
+import { passwordProblem } from '../shared/password.ts';
+import { normalizeMobile } from '../shared/mobile.ts';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { exec, migrate, one, many, tx, type AgentRow, type PassengerRow, type QuoteRow } from './db.ts';
 import { decryptJson, encryptJson, passengerStorageEnabled } from './crypto.ts';
@@ -24,14 +26,17 @@ import {
   recordFailure,
   subscriptionActive,
   tooManyFailures,
-  TRIAL_DAYS,
   verifyPassword,
+  licenceEnd,
+  graceEnd,
 } from './auth.ts';
 import type { AgentProfile, PassengerDetails, SavedPassenger, SavedQuote } from '../shared/types.ts';
 
 /** Quotes kept per agency. Saving a new quote removes the oldest beyond this. */
 export const MAX_QUOTES = Math.max(1, Number(process.env.MAX_QUOTES_PER_AGENT ?? 20));
 const MAX_BODY = 1_500_000; // logo upload is the biggest thing we accept
+const MAX_RECENT_SEARCHES = 8;
+const MAX_TRIPS = 50;
 const MAX_LOGO = 400_000; // characters of data: URL (~290 KB image)
 
 class HttpError extends Error {
@@ -77,7 +82,8 @@ function str(v: unknown, max: number, field: string): string {
 
 function toProfile(a: AgentRow): AgentProfile {
   return {
-    email: a.email,
+    email: a.email ?? '',
+    mobile: a.mobile ?? '',
     contactName: a.contact_name,
     agencyName: a.agency_name,
     phone: a.phone,
@@ -98,6 +104,12 @@ function toProfile(a: AgentRow): AgentProfile {
     trialEndsAt: a.trial_ends_at.toISOString(),
     paidUntil: a.paid_until ? a.paid_until.toISOString() : null,
     active: subscriptionActive(a),
+    status: (['pending', 'active', 'suspended'].includes(a.status) ? a.status : 'pending') as AgentProfile['status'],
+    licence: a.licence,
+    graceDays: a.grace_days,
+    expiresAt: licenceEnd(a).toISOString(),
+    graceEndsAt: graceEnd(a).toISOString(),
+    inGrace: subscriptionActive(a) && Date.now() > licenceEnd(a).getTime(),
   };
 }
 
@@ -210,28 +222,32 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
     switch (route) {
       case 'POST /api/agent/signup': {
         const body = await readJson(req);
-        const email = str(body.email, 200, 'Email').toLowerCase();
+        const mobile = normalizeMobile(body.mobile ?? body.phone);
+        const emailRaw = str(body.email, 200, 'Email').toLowerCase();
         const password = typeof body.password === 'string' ? body.password : '';
         const agencyName = str(body.agencyName, 120, 'Agency name');
-        if (!EMAIL_RE.test(email)) throw new HttpError(400, 'Enter a valid email');
-        if (password.length < 8 || password.length > 200) throw new HttpError(400, 'Password must be at least 8 characters');
+        if (!mobile) throw new HttpError(400, 'Enter a valid 10-digit mobile number');
+        if (emailRaw && !EMAIL_RE.test(emailRaw)) throw new HttpError(400, 'Enter a valid email (or leave it empty)');
+        if (passwordProblem(password)) throw new HttpError(400, passwordProblem(password));
         if (!agencyName) throw new HttpError(400, 'Enter your agency name');
-        if (await one('SELECT 1 FROM agents WHERE lower(email) = $1', [email])) {
-          throw new HttpError(409, 'An account with this email already exists. Please log in.');
+        const taken = 'An account with this mobile number already exists. Please log in.';
+        if (await one('SELECT 1 FROM agents WHERE mobile = $1', [mobile])) throw new HttpError(409, taken);
+        if (emailRaw && (await one('SELECT 1 FROM agents WHERE lower(email) = $1', [emailRaw]))) {
+          throw new HttpError(409, 'An account with this email already exists. Please log in with its mobile number.');
         }
 
-        const trialEnds = new Date(Date.now() + TRIAL_DAYS * 86400_000);
-        const phone = str(body.phone, 20, 'Phone');
+        // New agencies wait for the site admin (rexl) to activate them and set the licence and expiry date.
+        const trialEnds = new Date();
         let agent: AgentRow | undefined;
         try {
           agent = await one<AgentRow>(
-            `INSERT INTO agents (email, password_hash, contact_name, agency_name, phone, whatsapp, trial_ends_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-            [email, hashPassword(password), str(body.contactName, 120, 'Name'), agencyName, phone, phone, trialEnds],
+            `INSERT INTO agents (email, mobile, password_hash, contact_name, agency_name, phone, whatsapp, trial_ends_at, status)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending') RETURNING *`,
+            [emailRaw || null, mobile, hashPassword(password), str(body.contactName, 120, 'Name'), agencyName, mobile, mobile, trialEnds],
           );
         } catch (err) {
-          // Two sign-ups with the same email at the same moment: the unique index catches the second.
-          if ((err as { code?: string }).code === '23505') throw new HttpError(409, 'An account with this email already exists. Please log in.');
+          // Two sign-ups with the same mobile/email at the same moment: the unique index catches the second.
+          if ((err as { code?: string }).code === '23505') throw new HttpError(409, taken);
           throw err;
         }
         await createSession(req, res, agent!.id);
@@ -243,12 +259,12 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
         const ip = clientIp(req);
         if (tooManyFailures(ip)) throw new HttpError(429, 'Too many attempts. Please wait 15 minutes and try again.');
         const body = await readJson(req);
-        const email = str(body.email, 200, 'Email').toLowerCase();
+        const mobile = normalizeMobile(body.mobile);
         const password = typeof body.password === 'string' ? body.password : '';
-        const agent = await one<AgentRow>('SELECT * FROM agents WHERE lower(email) = $1', [email]);
+        const agent = mobile ? await one<AgentRow>('SELECT * FROM agents WHERE mobile = $1', [mobile]) : undefined;
         if (!agent || !verifyPassword(password, agent.password_hash)) {
           recordFailure(ip);
-          throw new HttpError(401, 'Wrong email or password');
+          throw new HttpError(401, 'Wrong mobile number or password');
         }
         await createSession(req, res, agent.id);
         send(res, 200, toProfile(agent));
@@ -325,7 +341,7 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
         const current = typeof body.currentPassword === 'string' ? body.currentPassword : '';
         const next = typeof body.newPassword === 'string' ? body.newPassword : '';
         if (!verifyPassword(current, a.password_hash)) throw new HttpError(400, 'Current password is wrong');
-        if (next.length < 8 || next.length > 200) throw new HttpError(400, 'New password must be at least 8 characters');
+        if (passwordProblem(next)) throw new HttpError(400, `New password: ${passwordProblem(next).replace(/^Password /, '')}`);
         await tx(async (c) => {
           await c.query('UPDATE agents SET password_hash = $1 WHERE id = $2', [hashPassword(next), a.id]);
           // Sign out other devices; a new session for this one is created below.
@@ -429,6 +445,94 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
           return ins.rows[0];
         });
         send(res, 201, toPassenger(row));
+        return true;
+      }
+
+      // ---- Recent searches and "My trips": each agency sees only its own.
+      case 'GET /api/agent/recent-searches': {
+        const a = await requireAgent(req);
+        const rows = await many<{ id: number; origin: string; destination: string; date: string; adults: number; searched_at: Date }>(
+          `SELECT id, origin, destination, travel_date::text AS date, adults, searched_at FROM recent_searches
+           WHERE agent_id = $1 ORDER BY searched_at DESC, id DESC LIMIT $2`,
+          [a.id, MAX_RECENT_SEARCHES],
+        );
+        send(res, 200, rows.map((r) => ({ id: r.id, origin: r.origin, destination: r.destination, date: r.date, adults: r.adults, at: r.searched_at.toISOString() })));
+        return true;
+      }
+
+      case 'POST /api/agent/recent-searches': {
+        const a = await requireAgent(req);
+        const body = await readJson(req);
+        const origin = str(body.origin, 3, 'From').toUpperCase();
+        const destination = str(body.destination, 3, 'To').toUpperCase();
+        const date = str(body.date, 10, 'Date');
+        const adults = Number(body.adults);
+        if (!/^[A-Z]{3}$/.test(origin) || !/^[A-Z]{3}$/.test(destination) || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !(adults >= 1 && adults <= 9)) {
+          throw new HttpError(400, 'Invalid search');
+        }
+        await tx(async (c) => {
+          await c.query(
+            `INSERT INTO recent_searches (agent_id, origin, destination, travel_date, adults) VALUES ($1, $2, $3, $4, $5)
+             ON CONFLICT (agent_id, origin, destination, travel_date, adults) DO UPDATE SET searched_at = now()`,
+            [a.id, origin, destination, date, adults],
+          );
+          await c.query(
+            `DELETE FROM recent_searches WHERE agent_id = $1 AND id NOT IN (
+               SELECT id FROM recent_searches WHERE agent_id = $1 ORDER BY searched_at DESC, id DESC LIMIT $2)`,
+            [a.id, MAX_RECENT_SEARCHES],
+          );
+        });
+        send(res, 201, { ok: true });
+        return true;
+      }
+
+      case 'DELETE /api/agent/recent-searches/:id': {
+        const a = await requireAgent(req);
+        await exec('DELETE FROM recent_searches WHERE id = $1 AND agent_id = $2', [Number(url.pathname.split('/').pop()), a.id]);
+        send(res, 200, { ok: true });
+        return true;
+      }
+
+      case 'GET /api/agent/trips': {
+        const a = await requireAgent(req);
+        const rows = await many<{ id: number; saved_at: Date; query: unknown; offer: unknown }>(
+          'SELECT id, saved_at, query, offer FROM trips WHERE agent_id = $1 ORDER BY saved_at DESC, id DESC LIMIT $2',
+          [a.id, MAX_TRIPS],
+        );
+        send(res, 200, rows.map((r) => ({ id: r.id, savedAt: r.saved_at.toISOString(), query: r.query, offer: r.offer })));
+        return true;
+      }
+
+      case 'POST /api/agent/trips': {
+        const a = await requireAgent(req);
+        const body = await readJson(req);
+        const query = body.query as Record<string, unknown> | undefined;
+        const offer = body.offer as Record<string, unknown> | undefined;
+        if (!query || typeof query !== 'object' || !offer || typeof offer !== 'object' || typeof offer.id !== 'string' || !Array.isArray(offer.segments)) {
+          throw new HttpError(400, 'Invalid trip');
+        }
+        const offerJson = JSON.stringify(offer);
+        if (offerJson.length > 60_000) throw new HttpError(413, 'Trip too large');
+        await tx(async (c) => {
+          await c.query(
+            `INSERT INTO trips (agent_id, offer_id, query, offer) VALUES ($1, $2, $3::jsonb, $4::jsonb)
+             ON CONFLICT (agent_id, offer_id) DO UPDATE SET saved_at = now(), query = EXCLUDED.query, offer = EXCLUDED.offer`,
+            [a.id, String(offer.id).slice(0, 200), JSON.stringify(query), offerJson],
+          );
+          await c.query(
+            `DELETE FROM trips WHERE agent_id = $1 AND id NOT IN (
+               SELECT id FROM trips WHERE agent_id = $1 ORDER BY saved_at DESC, id DESC LIMIT $2)`,
+            [a.id, MAX_TRIPS],
+          );
+        });
+        send(res, 201, { ok: true });
+        return true;
+      }
+
+      case 'DELETE /api/agent/trips/:id': {
+        const a = await requireAgent(req);
+        await exec('DELETE FROM trips WHERE id = $1 AND agent_id = $2', [Number(url.pathname.split('/').pop()), a.id]);
+        send(res, 200, { ok: true });
         return true;
       }
 

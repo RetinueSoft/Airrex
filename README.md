@@ -88,7 +88,20 @@ With SerpApi, the booking pop-up lists **Book on IndiGo / Air India…** links f
 
 ## AirRex for Agents (paid plan)
 
-Travel agents sign up at **/agent/login** and get a free trial (`AGENT_TRIAL_DAYS`, default 30). While the trial or plan is active they get:
+**AirRex is for logged-in agencies only.** Without a login, every address shows the login / sign-up page (no
+menus), and the flight APIs (`/api/search`, `/api/calendar`, `/api/booking-options`, `/api/airports`) answer 401.
+Agencies sign up and log in with their **mobile number** and password (email is optional, for contact). Passwords (agencies and rexl) need at least 7 characters with a capital
+letter, a number and a symbol (`shared/password.ts`). A new agency **waits for activation**: it can log in but
+only sees its Account page until the site admin activates it.
+
+**Site admin (`/site-admin`, user `rexl`, logs in with mobile 9943135008 or `SITE_ADMIN_MOBILE`).** After deployment, open `/site-admin` once: enter the one-time setup code
+from the server log (`app-compose airrex logs app`, or `ADMIN_SETUP_CODE` if set) and choose rexl's password. Then rexl logs in there to see all agencies (waiting ones first) and, for each, set the login mobile, the status
+(waiting / active / suspended), the licence name, the **expiry date** (the licence runs to the end of that day, India
+time) and the **grace period** in days (after expiry, agent tools keep working that long with a warning). Activating
+needs an expiry date. rexl can also **reset an agency's password** (type one, or get a temporary one shown once); the
+agency is logged out everywhere and should change it under Account → Change password. Agencies that existed before this keep their old trial end as their expiry.
+
+While an agency's licence (or grace period) is active they get:
 
 - **WhatsApp quotes.** On the results page each flight has **Add to quote**. The quote bar lets the agent add a customer name and number and a service charge per passenger, then **Send on WhatsApp** or **Copy text**. Quotes are saved under **Agent → Saved quotes**, where they can be resent or searched again for fresh prices.
 - **Branded ticket printing.** The print page adds the agency header (logo, name, address, phone, GSTIN) and footer to every printed page.
@@ -147,10 +160,10 @@ A Chrome/Edge extension (Manifest V3, plain JavaScript, no build step) for booki
 
 ```powershell
 npm run admin -- list
-npm run admin -- extend agent@example.com 30
-npm run admin -- expire agent@example.com
-npm run admin -- reset-password agent@example.com
-npm run admin -- delete agent@example.com
+npm run admin -- extend 9876543210 30
+npm run admin -- expire 9876543210
+npm run admin -- reset-password 9876543210
+npm run admin -- delete 9876543210
 ```
 
 Set `VITE_AGENT_PLAN_PRICE`, `VITE_SUPPORT_WHATSAPP` (or `VITE_SUPPORT_EMAIL`) in `.env` so agents see your price and a **Renew** button.

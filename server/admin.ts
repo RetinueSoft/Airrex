@@ -1,24 +1,26 @@
 // Admin commands for agent subscriptions. Run from the project folder:
 //   npm run admin -- list
-//   npm run admin -- extend <email> <days>      e.g. after an agent pays for a month: extend a@b.com 30
-//   npm run admin -- expire <email>             end trial/subscription now
-//   npm run admin -- delete <email>             remove the agent and their saved quotes
-//   npm run admin -- reset-password <email>     prints a new temporary password
+//   (Activating agencies and setting licence, expiry date and grace period: the site admin page /site-admin.)
+//   npm run admin -- extend <mobile> <days>      e.g. after an agent pays for a month: extend 9876543210 30
+//   npm run admin -- expire <mobile>             end trial/subscription now
+//   npm run admin -- delete <mobile>             remove the agent and their saved quotes
+//   npm run admin -- reset-password <mobile>     prints a new temporary password
 //   npm run admin -- reports [days]             "What did you pay?" reports (default last 30 days)
 //   npm run admin -- captures [days]            prices the AirRex Helper recorded on airline pages
 //   npm run admin -- capture <id>               every line of one recorded page
 // On the server (Docker): app-compose airrex exec app node server/admin.ts list
 
+import { normalizeMobile } from '../shared/mobile.ts';
 import { randomBytes } from 'node:crypto';
 import { exec, migrate, one, many, pool, type AgentRow } from './db.ts';
-import { hashPassword } from './auth.ts';
+import { hashPassword, licenceEnd, subscriptionActive } from './auth.ts';
 
 const [cmd, email, arg] = process.argv.slice(2);
 
 async function find(e: string | undefined) {
-  if (!e) throw new Error('Give the agent email');
-  const a = await one<AgentRow>('SELECT * FROM agents WHERE lower(email) = lower($1)', [e]);
-  if (!a) throw new Error(`No agent with email ${e}`);
+  if (!e) throw new Error('Give the agency mobile number (or email)');
+  const a = await one<AgentRow>('SELECT * FROM agents WHERE mobile = $1 OR lower(email) = lower($2)', [normalizeMobile(e) || '-', e]);
+  if (!a) throw new Error(`No agency with mobile number or email ${e}`);
   return a;
 }
 
@@ -34,15 +36,17 @@ async function main() {
       const now = Date.now();
       console.table(
         rows.map((a) => ({
-          email: a.email,
+          mobile: a.mobile ?? '-',
+          email: a.email ?? '-',
           agency: a.agency_name,
-          city: a.city,
           phone: a.phone,
           joined: day(a.created_at),
-          trialEnds: day(a.trial_ends_at),
-          paidUntil: day(a.paid_until),
+          status: a.status,
+          licence: a.licence || '-',
+          expires: day(licenceEnd(a)),
+          grace: a.grace_days,
           quotes: a.quotes,
-          status: a.trial_ends_at.getTime() > now ? 'trial' : a.paid_until && a.paid_until.getTime() > now ? 'paid' : 'EXPIRED',
+          access: a.status !== 'active' ? a.status.toUpperCase() : subscriptionActive(a) ? (now > licenceEnd(a).getTime() ? 'in grace' : 'yes') : 'EXPIRED',
         })),
       );
       break;
@@ -55,19 +59,19 @@ async function main() {
       const base = Math.max(Date.now(), a.trial_ends_at.getTime(), a.paid_until ? a.paid_until.getTime() : 0);
       const until = new Date(base + days * 86400_000);
       await exec('UPDATE agents SET paid_until = $1 WHERE id = $2', [until, a.id]);
-      console.log(`${a.email} (${a.agency_name}) paid until ${day(until)}`);
+      console.log(`${a.mobile ?? a.email} (${a.agency_name}) paid until ${day(until)}`);
       break;
     }
     case 'expire': {
       const a = await find(email);
       await exec(`UPDATE agents SET trial_ends_at = now() - interval '1 second', paid_until = NULL WHERE id = $1`, [a.id]);
-      console.log(`${a.email} subscription ended`);
+      console.log(`${a.mobile ?? a.email} subscription ended`);
       break;
     }
     case 'delete': {
       const a = await find(email);
       await exec('DELETE FROM agents WHERE id = $1', [a.id]); // sessions and quotes go with it (ON DELETE CASCADE)
-      console.log(`Deleted ${a.email} and their quotes`);
+      console.log(`Deleted ${a.mobile ?? a.email} and their quotes`);
       break;
     }
     case 'reset-password': {
@@ -75,7 +79,7 @@ async function main() {
       const temp = randomBytes(6).toString('base64url');
       await exec('UPDATE agents SET password_hash = $1 WHERE id = $2', [hashPassword(temp), a.id]);
       await exec('DELETE FROM sessions WHERE agent_id = $1', [a.id]);
-      console.log(`Temporary password for ${a.email}: ${temp}\nAsk them to change it in Agent → Account.`);
+      console.log(`Temporary password for ${a.mobile ?? a.email}: ${temp}\nAsk them to change it in Agent → Account.`);
       break;
     }
     case 'reports': {
@@ -137,7 +141,7 @@ async function main() {
       break;
     }
     default:
-      console.log('Commands: list | extend <email> <days> | expire <email> | delete <email> | reset-password <email> | reports [days] | captures [days] | capture <id>');
+      console.log('Commands: list | extend <mobile> <days> | expire <mobile> | delete <mobile> | reset-password <mobile> | reports [days] | captures [days] | capture <id>');
   }
 }
 

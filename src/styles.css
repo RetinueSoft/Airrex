@@ -629,3 +629,21 @@ main { flex: 1; width: 100%; }
 .recent-link .grow { display: flex; flex-direction: column; min-width: 0; }
 .recent-link b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .recent-remove { padding: 10px; color: var(--text-2); }
+
+/* ---------- Site admin (/site-admin) ---------- */
+.site-admin .auth-card { max-width: 440px; margin: 24px auto; }
+.site-admin .auth-card h1 { margin-bottom: 8px; }
+.site-admin code { font-family: var(--font-mono); background: var(--low); padding: 1px 6px; border-radius: 6px; }
+.site-admin-search { max-width: 420px; margin: 12px 0; }
+.row-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.agency-list { display: grid; gap: 10px; }
+.agency-row { background: var(--card); border: 1px solid var(--line-soft); border-radius: var(--radius); padding: 14px 16px; display: grid; gap: 10px; }
+.agency-row.pending { border-color: var(--warn); }
+.agency-who { display: grid; gap: 2px; }
+.agency-edit { align-items: flex-end; }
+.agency-edit .field.small { flex: 0 0 110px; }
+.agency-actions { display: flex; gap: 8px; }
+
+.reset-link { justify-self: start; }
+.reset-box { background: var(--low); border-radius: var(--r-md); padding: 12px; display: grid; gap: 8px; }
+.reset-pw { font-size: 15px; font-weight: 700; padding: 2px 8px; }

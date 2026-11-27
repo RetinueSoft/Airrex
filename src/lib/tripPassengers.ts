@@ -14,3 +14,8 @@ export function tripPassengers(q: Pick<SearchQuery, 'origin' | 'destination' | '
 export function setTripPassengers(q: Pick<SearchQuery, 'origin' | 'destination' | 'date'>, list: PassengerDetails[]) {
   trips.set(key(q), list);
 }
+
+/** Forget every trip's passengers (on logout, so the next person on this computer can't see them). */
+export function clearAllTripPassengers() {
+  trips.clear();
+}

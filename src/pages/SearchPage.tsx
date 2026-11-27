@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { findAirport } from '../../shared/airports.ts';
 import { loadRecentSearches, removeRecentSearch, searchDate, type RecentSearch } from '../lib/recentSearches.ts';
@@ -22,7 +22,10 @@ const city = (code: string) => findAirport(code)?.city ?? code;
 
 /** Recent searches: tap one to run it again (a past date moves to today). */
 function RecentSearches() {
-  const [list, setList] = useState<RecentSearch[]>(loadRecentSearches);
+  const [list, setList] = useState<RecentSearch[]>([]);
+  useEffect(() => {
+    loadRecentSearches().then(setList);
+  }, []);
   if (!list.length) return null;
   const today = todayYmd();
   return (
@@ -30,7 +33,7 @@ function RecentSearches() {
       <h2>Recent searches</h2>
       <div className="recent-list">
         {list.map((s) => (
-          <div key={s.at} className="recent-item">
+          <div key={s.id} className="recent-item">
             <Link className="recent-link" to={`/results?${toSearchParams({ ...s, date: searchDate(s) })}`}>
               <Icon name="history" size={20} />
               <span className="grow">
@@ -46,8 +49,8 @@ function RecentSearches() {
               className="link-btn recent-remove"
               aria-label={`Remove ${s.origin} to ${s.destination} from recent searches`}
               onClick={() => {
+                setList((l) => l.filter((x) => x.id !== s.id));
                 removeRecentSearch(s);
-                setList(loadRecentSearches());
               }}
             >
               <Icon name="close" size={16} />

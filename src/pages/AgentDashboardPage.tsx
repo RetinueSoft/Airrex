@@ -1,12 +1,13 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import type { AgentProfile, SavedQuote } from '../../shared/types.ts';
-import { daysLeft, onTrial, quotesApi, useAgent } from '../lib/agent.tsx';
+import { daysLeft, quotesApi, useAgent } from '../lib/agent.tsx';
 import { quoteText, whatsappLink } from '../lib/quote.ts';
 import { findAirport } from '../../shared/airports.ts';
 import { prettyDate } from '../lib/format.ts';
 import { toSearchParams } from '../components/SearchForm.tsx';
 import { AgencyFooter, AgencyHeader } from '../components/AgencyBrand.tsx';
+import { PASSWORD_HINT, passwordProblem } from '../../shared/password.ts';
 import Icon from '../components/Icon.tsx';
 import { chargeRule, defaultCharge } from '../lib/charges.ts';
 
@@ -48,27 +49,63 @@ async function logoToDataUrl(file: File): Promise<string> {
   }
 }
 
+const day = (iso: string) => new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+
 function PlanBanner({ agent }: { agent: AgentProfile }) {
   const left = daysLeft(agent);
   const renew = SUPPORT_WHATSAPP
-    ? whatsappLink(`Hi, I'd like to renew AirRex for ${agent.agencyName} (${agent.email}).`, SUPPORT_WHATSAPP)
+    ? whatsappLink(`Hi, I'd like to renew AirRex for ${agent.agencyName} (${agent.mobile}).`, SUPPORT_WHATSAPP)
     : SUPPORT_EMAIL
       ? `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('AirRex renewal')}`
       : undefined;
+  if (agent.status === 'pending') {
+    return (
+      <div className="plan-banner soon">
+        <Icon name="hourglass_top" size={22} />
+        <div className="grow">
+          <b>Waiting for activation.</b> AirRex will check your details and activate your account. Quotes, branded printing and
+          saved passengers start working once it's active.
+        </div>
+        {renew && <a className="btn" href={renew} target="_blank" rel="noopener noreferrer">Contact AirRex</a>}
+      </div>
+    );
+  }
+  if (agent.status === 'suspended') {
+    return (
+      <div className="plan-banner expired">
+        <Icon name="block" size={22} />
+        <div className="grow"><b>Your account is suspended.</b> Please contact AirRex.</div>
+        {renew && <a className="btn primary" href={renew} target="_blank" rel="noopener noreferrer">Contact AirRex</a>}
+      </div>
+    );
+  }
   if (!agent.active) {
     return (
       <div className="plan-banner expired">
         <Icon name="error" size={22} />
-        <div className="grow"><b>Your plan has ended.</b> Quotes and branded printing are paused. Renew for {PLAN_PRICE} to continue.</div>
+        <div className="grow"><b>Your licence ended on {day(agent.expiresAt)}.</b> Quotes and branded printing are paused. Renew to continue.</div>
+        {renew && <a className="btn primary" href={renew} target="_blank" rel="noopener noreferrer">Renew now</a>}
+      </div>
+    );
+  }
+  if (agent.inGrace) {
+    return (
+      <div className="plan-banner soon">
+        <Icon name="warning" size={22} />
+        <div className="grow">
+          <b>Licence expired on {day(agent.expiresAt)}.</b> Grace period: agent tools keep working until {day(agent.graceEndsAt)} ({left}{' '}
+          day{left === 1 ? '' : 's'} left). Renew to avoid interruption.
+        </div>
         {renew && <a className="btn primary" href={renew} target="_blank" rel="noopener noreferrer">Renew now</a>}
       </div>
     );
   }
   return (
     <div className={`plan-banner ${left <= 5 ? 'soon' : ''}`}>
-      <Icon name={onTrial(agent) ? 'hourglass_top' : 'verified'} size={22} />
+      <Icon name="verified" size={22} />
       <div className="grow">
-        {onTrial(agent) ? <><b>Free trial:</b> {left} day{left === 1 ? '' : 's'} left. After that {PLAN_PRICE}.</> : <><b>Active plan</b> · renews in {left} day{left === 1 ? '' : 's'}</>}
+        <b>{agent.licence || 'Licence active'}</b> · valid till {day(agent.expiresAt)} ({left} day{left === 1 ? '' : 's'} left)
+        {agent.graceDays > 0 && <span className="muted"> · {agent.graceDays}-day grace period after that</span>}
       </div>
       {renew && left <= 7 && <a className="btn" href={renew} target="_blank" rel="noopener noreferrer">Pay / renew</a>}
     </div>
@@ -89,7 +126,7 @@ export default function AgentDashboardPage() {
   }, [agent]);
   useEffect(() => {
     if (agent) quotesApi.list().then(setQuotes).catch(() => setQuotes([]));
-  }, [agent?.email]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [agent?.mobile]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) return <p className="page muted">Loading…</p>;
   if (!agent) return <Navigate to="/agent/login" replace />;
@@ -122,6 +159,10 @@ export default function AgentDashboardPage() {
 
   async function submitPassword(e: FormEvent) {
     e.preventDefault();
+    if (passwordProblem(pw.next)) {
+      setPwMsg(passwordProblem(pw.next));
+      return;
+    }
     try {
       await changePassword(pw.current, pw.next);
       setPw({ current: '', next: '' });
@@ -136,7 +177,7 @@ export default function AgentDashboardPage() {
       <div className="dash-head">
         <div>
           <h1>{agent.agencyName}</h1>
-          <p className="muted">{agent.email}</p>
+          <p className="muted">Login mobile {agent.mobile || '—'}{agent.email && ` · ${agent.email}`}</p>
         </div>
         <button className="btn" onClick={logout}><Icon name="logout" /> Log out</button>
       </div>
@@ -285,7 +326,8 @@ export default function AgentDashboardPage() {
           <form className="dash-card" onSubmit={submitPassword}>
             <h2>Change password</h2>
             <label className="field"><span>Current password</span><input type="password" value={pw.current} onChange={(e) => setPw({ ...pw, current: e.target.value })} autoComplete="current-password" required /></label>
-            <label className="field"><span>New password</span><input type="password" value={pw.next} onChange={(e) => setPw({ ...pw, next: e.target.value })} autoComplete="new-password" minLength={8} required /></label>
+            <label className="field"><span>New password</span><input type="password" value={pw.next} onChange={(e) => setPw({ ...pw, next: e.target.value })} autoComplete="new-password" required />
+              <span className="hint-text">{PASSWORD_HINT}.</span></label>
             {pwMsg && <p className="muted small-text">{pwMsg}</p>}
             <div className="form-actions"><button className="btn" type="submit">Change password</button></div>
           </form>
