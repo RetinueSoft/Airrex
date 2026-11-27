@@ -63,7 +63,8 @@ function BookDialog({ q, onClose }: { q: SavedQuote; onClose: () => void }) {
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    // Clicking outside doesn't close it: use × or Esc.
+    <div className="modal-backdrop">
       <div className="modal book-dialog" role="dialog" aria-modal="true" aria-labelledby="book-q-title" onClick={(e) => e.stopPropagation()}>
         <button className="modal-close" onClick={onClose} aria-label="Close">×</button>
         <h2 id="book-q-title">Book for {q.customerName || 'customer'}</h2>

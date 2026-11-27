@@ -9,11 +9,15 @@ import { fetchBookingOptions, openBookingOption } from '../lib/api.ts';
 import { baggageSummary } from '../../shared/baggage.ts';
 import TripPassengers from './TripPassengers.tsx';
 import FareReport from './FareReport.tsx';
+import { helperTrip, sendTripToHelper, updateHelperPassengers, useHelper } from '../lib/helper.ts';
+import { tripPassengers } from '../lib/tripPassengers.ts';
+import type { PassengerDetails } from '../../shared/types.ts';
 
 export default function BookingModal({ offer, query, onClose }: { offer: FlightOffer; query: SearchQuery; onClose: () => void }) {
   const airline = airlineInfo(offer.airlineCode, offer.airlineName);
   const [copied, setCopied] = useState(false);
   const [opened, setOpened] = useState(false);
+  const helper = useHelper();
   const [options, setOptions] = useState<BookingOption[] | null>(null);
   const [optionsError, setOptionsError] = useState('');
   /** True while asking SerpApi for links (costs one search). */
@@ -74,6 +78,13 @@ export default function BookingModal({ offer, query, onClose }: { offer: FlightO
   function markOpened() {
     saveTrip(query, offer);
     setOpened(true);
+    // AirRex Helper (browser extension): fills the airline's passenger form and records its prices.
+    sendTripToHelper(helperTrip(query, offer, tripPassengers(query)));
+  }
+
+  /** Passengers added after continuing to the airline: update the helper too. */
+  function onPassengersChange(list: PassengerDetails[]) {
+    updateHelperPassengers(helperTrip(query, offer, list));
   }
 
   function goToAirlineHome() {
@@ -97,7 +108,8 @@ export default function BookingModal({ offer, query, onClose }: { offer: FlightO
   const canFindLinks = !!offer.bookingToken && options === null && checkedCache && !fetching;
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    // Clicking outside doesn't close it (passenger details being added would be lost): use × or Esc.
+    <div className="modal-backdrop">
       <div className="modal" role="dialog" aria-modal="true" aria-labelledby="book-title" onClick={(e) => e.stopPropagation()}>
         <button className="modal-close" onClick={onClose} aria-label="Close">×</button>
         <h2 id="book-title">Book on {airline.name}</h2>
@@ -154,7 +166,18 @@ export default function BookingModal({ offer, query, onClose }: { offer: FlightO
             {airlineOptions.length ? `${airline.name} homepage ↗` : `Continue to ${airline.name} ↗`}
           </button>
         </div>
-        <TripPassengers query={query} />
+        <TripPassengers query={query} onChange={onPassengersChange} />
+        {helper ? (
+          <p className="hint ok helper-note">
+            ✓ AirRex Helper is on. After you continue, tap a passenger's name in the AirRex panel on {airline.name}'s
+            passenger page to fill the form.
+          </p>
+        ) : (
+          <p className="muted small-text helper-note">
+            On a computer? <Link to="/helper">Install AirRex Helper</Link> to fill passenger details on the airline site
+            automatically.
+          </p>
+        )}
 
         {opened && (
           <>

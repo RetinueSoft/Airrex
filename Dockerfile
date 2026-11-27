@@ -11,6 +11,8 @@ ARG VITE_AGENT_TRIAL_DAYS
 ARG VITE_SUPPORT_WHATSAPP
 ARG VITE_SUPPORT_EMAIL
 ARG VITE_MAX_QUOTES_PER_AGENT
+# Live site address, added to the AirRex Helper extension download (/airrex-helper.zip).
+ARG AIRREX_SITE_URL
 RUN npm run build && npm prune --omit=dev
 
 FROM node:24-slim

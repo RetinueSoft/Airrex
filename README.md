@@ -103,6 +103,37 @@ Travel agents sign up at **/agent/login** and get a free trial (`AGENT_TRIAL_DAY
 
 When a plan ends, quotes and branding pause, but saved quotes can still be viewed.
 
+### AirRex Helper (browser extension, `extension/`)
+
+A Chrome/Edge extension (Manifest V3, plain JavaScript, no build step) for booking on a computer. Install page:
+**/helper** (download `/airrex-helper.zip`, then *Load unpacked* in `chrome://extensions` with Developer mode on).
+
+- **Hand-over.** When someone clicks *Continue to the airline* in AirRex's booking pop-up, the page passes the trip
+  (route, date, flight, the price AirRex showed, and the passengers added) to the extension (`airrex-bridge.js`, only
+  on pages with `<meta name="airrex-app">`). The extension keeps it in `chrome.storage.session` (memory only, cleared
+  when the browser closes, forgotten after 6 hours). Passenger details are never sent to the AirRex server.
+- **Fill passengers.** On the airline's site a small AirRex panel appears. Tapping a passenger's name fills the form
+  (`engine.js`): fields are recognised from their labels/placeholders/names, values are set so React/Angular forms
+  notice, dates match the field's format (or day/month/year dropdowns), title/gender/nationality dropdowns and radio
+  buttons are matched by text. Contact, payment and loyalty fields are never touched. Fields it can't set (some custom
+  dropdowns) are highlighted orange. Nothing is submitted: the person checks and continues.
+- **Fill the flight search.** "Continue to the airline" usually opens the airline's home page. The panel's
+  **Fill search** picks *One way*, types the From/To airport codes and chooses the matching suggestion, and sets the
+  date (typed in the field's format, or by opening the calendar and clicking the day). Adults are listed for the
+  person to set. A **Search details to copy** list (trip type, From, To, date in the airline's format, adults,
+  flight number) covers anything it can't set.
+- **Record prices (automatic).** On every airline page, including the payment page's fare breakdown (where
+  IndiGo adds its convenience fee), the extension reads the visible text lines that contain an amount (fare options,
+  fees, bag prices, totals), masks e-mails and long numbers, and posts them to `POST /api/page-captures` with the
+  flight and AirRex's shown price. It never reads inputs, so card/UPI details and anything typed are never recorded
+  (card forms also sit in the payment provider's frames). There is no button: travellers don't need to do anything.
+  Read them with `npm run admin -- captures [days]` (the `payment` column marks payment pages) and
+  `npm run admin -- capture <id>`.
+- **Sites.** Airline domains are listed in `extension/manifest.json`. AirRex itself: localhost, plus the live address
+  from `AIRREX_SITE_URL`, which `npm run build` (`server/tools/zip-extension.ts`) adds to the packed manifest.
+- **Limits.** Filling is generic, so a field an airline builds unusually may be missed (it says which). Price lines
+  are raw text: use them to check and update `shared/airlineFees.ts` and `shared/baggagePolicy.ts`.
+
 ### Passenger details and "What did you pay?" (everyone)
 
 - **Passenger details for the airline form.** In the booking pop-up, travellers scan the passport photo page (or paste

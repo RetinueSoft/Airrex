@@ -1,0 +1,66 @@
+{
+  "manifest_version": 3,
+  "name": "AirRex Helper",
+  "version": "0.1.4",
+  "description": "Fills airline passenger forms from AirRex and records the prices and fees airline sites show, to keep AirRex prices accurate.",
+  "minimum_chrome_version": "116",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "http://localhost/*",
+    "http://127.0.0.1/*",
+    "https://*.goindigo.in/*",
+    "https://*.airindiaexpress.com/*",
+    "https://*.airindia.com/*",
+    "https://*.akasaair.com/*",
+    "https://*.spicejet.com/*",
+    "https://*.flyscoot.com/*",
+    "https://*.srilankan.com/*",
+    "https://*.airasia.com/*",
+    "https://*.batikair.com/*",
+    "https://*.malaysiaairlines.com/*",
+    "https://*.airarabia.com/*",
+    "https://*.emirates.com/*",
+    "https://*.singaporeair.com/*",
+    "https://*.qatarairways.com/*",
+    "https://*.etihad.com/*",
+    "https://*.salamair.com/*",
+    "https://*.omanair.com/*",
+    "https://*.gulfair.com/*",
+    "https://*.allianceair.in/*"
+  ],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": ["http://localhost/*", "http://127.0.0.1/*"],
+      "js": ["airrex-bridge.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://*.goindigo.in/*",
+        "https://*.airindiaexpress.com/*",
+        "https://*.airindia.com/*",
+        "https://*.akasaair.com/*",
+        "https://*.spicejet.com/*",
+        "https://*.flyscoot.com/*",
+        "https://*.srilankan.com/*",
+        "https://*.airasia.com/*",
+        "https://*.batikair.com/*",
+        "https://*.malaysiaairlines.com/*",
+        "https://*.airarabia.com/*",
+        "https://*.emirates.com/*",
+        "https://*.singaporeair.com/*",
+        "https://*.qatarairways.com/*",
+        "https://*.etihad.com/*",
+        "https://*.salamair.com/*",
+        "https://*.omanair.com/*",
+        "https://*.gulfair.com/*",
+        "https://*.allianceair.in/*"
+      ],
+      "js": ["engine.js", "airline.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "action": { "default_title": "AirRex Helper", "default_popup": "popup.html" }
+}

@@ -25,6 +25,16 @@ export const PROCESSING_FEES: Record<string, ProcessingFeeRule> = {
     departingFrom: ['IN'],
     label: 'Air India Express convenience fee',
   },
+  // IndiGo convenience fee, added on the payment page ("will vary depending on ... type of fare, journey type"):
+  //   domestic ₹499 for cards / net banking / mobile app (goindigo.in "Fees and Charges", Nov 2026);
+  //   international ₹649 (₹550 + 18% GST), seen on IndiGo's payment page for Trichy → Singapore, 1 adult, Nov 2026.
+  // Assumed per passenger per flight; check against the payment-page amounts the AirRex Helper records
+  // (npm run admin -- captures).
+  '6E': {
+    perPassengerPerSegment: { domestic: 499, international: 649 },
+    departingFrom: ['IN'],
+    label: 'IndiGo convenience fee (card / net banking)',
+  },
 };
 
 /** The processing fee rule that applies to this airline and departure airport, if any. */

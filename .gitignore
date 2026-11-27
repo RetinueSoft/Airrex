@@ -7,3 +7,4 @@ dist/
 .data/
 
 *.tsbuildinfo
+public/airrex-helper.zip

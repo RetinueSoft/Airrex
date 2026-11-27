@@ -32,7 +32,11 @@ services:
   app:
     # Published by GitHub Actions from the release branch. Local build instead: docker compose build app
     image: ghcr.io/retinuesoft/airrex:${APP_IMAGE_TAG:-latest}
-    build: .
+    build:
+      context: .
+      args:
+        # Live site address, built into the AirRex Helper extension download.
+        AIRREX_SITE_URL: "${AIRREX_SITE_URL:-}"
     container_name: airrex-app
     restart: unless-stopped
     depends_on:

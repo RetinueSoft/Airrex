@@ -5,6 +5,8 @@
 //   npm run admin -- delete <email>             remove the agent and their saved quotes
 //   npm run admin -- reset-password <email>     prints a new temporary password
 //   npm run admin -- reports [days]             "What did you pay?" reports (default last 30 days)
+//   npm run admin -- captures [days]            prices the AirRex Helper recorded on airline pages
+//   npm run admin -- capture <id>               every line of one recorded page
 // On the server (Docker): app-compose airrex exec app node server/admin.ts list
 
 import { randomBytes } from 'node:crypto';
@@ -107,8 +109,35 @@ async function main() {
       console.table(latest);
       break;
     }
+    case 'captures': {
+      const days = Math.max(1, Number(email) || 7);
+      const rows = await many<Record<string, unknown>>(
+        `SELECT id, to_char(created_at AT TIME ZONE 'Asia/Kolkata', 'MM-DD HH24:MI') AS at, airline_code AS airline,
+                origin || '-' || destination AS route, travel_date::text AS date, adults, shown_total AS shown,
+                host, left(coalesce(nullif(heading, ''), title), 40) AS page, payment_page AS payment, jsonb_array_length(lines) AS lines,
+                (SELECT max((l->>'amount')::int) FROM jsonb_array_elements(lines) l
+                  WHERE l->>'text' ~* '(total|grand|to pay|you pay|amount payable)') AS total_on_page
+         FROM page_captures WHERE created_at > now() - make_interval(days => $1)
+         ORDER BY created_at DESC LIMIT 50`,
+        [days],
+      );
+      console.log(`Pages recorded by AirRex Helper, last ${days} days (newest 50). "total_on_page" = largest amount on a Total line.`);
+      console.table(rows);
+      console.log('Show all lines of one page: npm run admin -- capture <id>');
+      break;
+    }
+    case 'capture': {
+      const row = await one<{ host: string; path: string; title: string; heading: string; lines: { text: string; amount: number | null }[]; shown_total: number }>(
+        'SELECT host, path, title, heading, lines, shown_total FROM page_captures WHERE id = $1',
+        [Number(email)],
+      );
+      if (!row) throw new Error(`No capture ${email}`);
+      console.log(`${row.host}${row.path} · ${row.heading || row.title} · AirRex showed ₹${row.shown_total}`);
+      console.table(row.lines);
+      break;
+    }
     default:
-      console.log('Commands: list | extend <email> <days> | expire <email> | delete <email> | reset-password <email> | reports [days]');
+      console.log('Commands: list | extend <email> <days> | expire <email> | delete <email> | reset-password <email> | reports [days] | captures [days] | capture <id>');
   }
 }
 

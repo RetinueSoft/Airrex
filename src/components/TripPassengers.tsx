@@ -2,7 +2,7 @@
 // airline's passenger form. Travellers' details stay in this browser tab only. Agents can also pick saved passengers
 // or save new ones (encrypted on the server, deleted automatically).
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { PassengerDetails, SavedPassenger, SearchQuery } from '../../shared/types.ts';
 import { findAirport } from '../../shared/airports.ts';
 import { passengersApi, useAgent } from '../lib/agent.tsx';
@@ -44,7 +44,7 @@ export function SaveConsent({
   );
 }
 
-export default function TripPassengers({ query }: { query: SearchQuery }) {
+export default function TripPassengers({ query, onChange }: { query: SearchQuery; onChange?: (list: PassengerDetails[]) => void }) {
   const { agent } = useAgent();
   const international = findAirport(query.origin)?.country !== 'IN' || findAirport(query.destination)?.country !== 'IN';
   const [list, setList] = useState<PassengerDetails[]>(() => tripPassengers(query));
@@ -54,7 +54,15 @@ export default function TripPassengers({ query }: { query: SearchQuery }) {
   const [keepDays, setKeepDays] = useState(30);
   const [error, setError] = useState('');
 
-  useEffect(() => setTripPassengers(query, list), [list, query]);
+  // Report real changes only (not the first render): opening the pop-up again must not overwrite the
+  // passengers the helper already has.
+  const initialList = useRef(list);
+  useEffect(() => {
+    setTripPassengers(query, list);
+    if (list === initialList.current) return; // unchanged since the pop-up opened
+    onChange?.(list);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [list]);
 
   useEffect(() => {
     if (!agent) return;
