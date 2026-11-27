@@ -12,10 +12,10 @@ A mobile-friendly flight comparison web app (Skyscanner-style).
 Requires Node.js 22.18+ and **PostgreSQL 18+** (agent accounts, logins and quotes). Flight search works without
 the database; only the agent pages need it.
 
-1. Copy `.env.example` to `.env` and set the `POSTGRES_*` values.
+1. Copy `.env.example` to `.env` and uncomment the `POSTGRES_*` lines under "Local development only".
 2. Start a database, either way:
    - **Docker (same as the server):** set `POSTGRES_PASSWORD` in `.env`, then `npm run db:up`. This starts
-     `airrex-postgres` on `127.0.0.1:5436` (the `.env.example` defaults).
+     `airrex-postgres` on `127.0.0.1:5436` (the values in those lines).
    - **A Postgres you already have:** create a database named `airrex` and point `POSTGRES_HOST/PORT/USER/PASSWORD` at it.
 3. Run the app:
 
@@ -43,11 +43,8 @@ Production: `npm run build` then `npm start`. A single Node server then serves t
 | `airrex-app` | `ghcr.io/retinuesoft/airrex` (Dockerfile in this repo) | `APP_HOST_PORT` (18087), proxied by the common Caddy |
 
 `POSTGRES_PASSWORD` comes from the shared `/root/common/.env`, and the app's settings from
-`/root/common/env/airrex.env` (created from `.env.example`). To be deployed and backed up like the other apps,
-AirRex still needs:
-- a line in VpsSetup `apps.conf` (`airrex  RetinueSoft/Airrex  app  postgres  airrex-postgres  @POSTGRES_DB  postgres  -`);
-- `caddy/sites/airrex.caddy` and a public port (8087 is free) in `PORTS.md`;
-- `deploy/update.sh` and a GitHub Actions workflow that builds the image.
+`/root/common/env/airrex.env` (created from `.env.example`). It is served on https://airrex.retinuesoft.com and
+`https://<server-ip>:8087`; install, updates and backups are described in [DEPLOY.md](DEPLOY.md).
 
 Admin on the server: `app-compose airrex exec app node server/admin.ts list`.
 
