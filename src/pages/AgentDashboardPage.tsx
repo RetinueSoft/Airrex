@@ -8,6 +8,10 @@ import { prettyDate } from '../lib/format.ts';
 import { toSearchParams } from '../components/SearchForm.tsx';
 import { AgencyFooter, AgencyHeader } from '../components/AgencyBrand.tsx';
 import Icon from '../components/Icon.tsx';
+import { chargeRule, defaultCharge } from '../lib/charges.ts';
+
+const EXAMPLE_FARE = 10000;
+const EXAMPLE_FARES = [5000, 10000, 30000];
 import { PLAN_PRICE, SUPPORT_EMAIL, SUPPORT_WHATSAPP } from '../lib/config.ts';
 
 const FEE_AIRLINES = [
@@ -94,13 +98,6 @@ export default function AgentDashboardPage() {
   const set = (k: keyof AgentProfile) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setDraft({ ...draft, [k]: k === 'defaultMarkup' ? Math.max(0, Math.round(Number(e.target.value) || 0)) : e.target.value });
 
-  function setFee(code: string, value: string) {
-    const fees = { ...draft!.paymentFees };
-    if (value === '') delete fees[code];
-    else fees[code] = Math.max(0, Math.min(5000, Math.round(Number(value) || 0)));
-    setDraft({ ...draft!, paymentFees: fees });
-  }
-
   async function save(e: FormEvent) {
     e.preventDefault();
     setError('');
@@ -186,42 +183,54 @@ export default function AgentDashboardPage() {
           <label className="field"><span>Ticket footer text</span>
             <textarea value={draft.ticketFooter} onChange={set('ticketFooter')} maxLength={400} rows={2} placeholder="e.g. Thank you for booking with us! Carry a photo ID. Report 2 hours before departure." />
           </label>
-          <label className="field"><span>Default service charge per passenger (₹)</span>
-            <input type="number" min={0} step={50} value={draft.defaultMarkup} onChange={set('defaultMarkup')} />
-          </label>
+          <fieldset className="charge-settings">
+            <legend>Default service charge per passenger</legend>
+            <div className="field-row">
+              <label className="field">
+                <span>Charge as</span>
+                <select value={draft.markupMode} onChange={(e) => setDraft({ ...draft, markupMode: e.target.value as AgentProfile['markupMode'] })}>
+                  <option value="fixed">Fixed amount (₹)</option>
+                  <option value="percent">% of the fare</option>
+                  <option value="higher">₹ or %, whichever is higher</option>
+                  <option value="lower">₹ or %, whichever is lower</option>
+                  <option value="range">% with lower &amp; upper limit</option>
+                </select>
+              </label>
+              {draft.markupMode !== 'fixed' && (
+                <label className="field"><span>Percent of fare (%)</span>
+                  <input type="number" min={0} max={50} step={0.5} value={draft.markupPercent}
+                    onChange={(e) => setDraft({ ...draft, markupPercent: Math.max(0, Math.min(50, Number(e.target.value) || 0)) })} />
+                </label>
+              )}
+              {draft.markupMode !== 'percent' && (
+                <label className="field"><span>{draft.markupMode === 'range' ? 'Lower limit (₹)' : 'Amount (₹)'}</span>
+                  <input type="number" min={0} step={50} value={draft.defaultMarkup} onChange={set('defaultMarkup')} />
+                </label>
+              )}
+              {draft.markupMode === 'range' && (
+                <label className="field"><span>Upper limit (₹)</span>
+                  <input type="number" min={0} step={50} value={draft.markupMax}
+                    onChange={(e) => setDraft({ ...draft, markupMax: Math.max(0, Math.round(Number(e.target.value) || 0)) })} />
+                </label>
+              )}
+            </div>
+            <span className="hint-text">
+              {chargeRule(draft)}. e.g.{' '}
+              {EXAMPLE_FARES.map((f) => `₹${defaultCharge(draft, f).toLocaleString('en-IN')} on a ₹${f.toLocaleString('en-IN')} fare`).join(', ')}{' '}
+              (per passenger).
+              You can still change it for any flight or quote.
+            </span>
+          </fieldset>
           <label className="check">
             <input type="checkbox" checked={draft.gstOnCharge} onChange={(e) => setDraft({ ...draft, gstOnCharge: e.target.checked })} />
             <span className="grow">
               Add 18% GST on my service charge
               <span className="hint-text">
-                e.g. ₹{draft.defaultMarkup} charge + ₹{Math.round(draft.defaultMarkup * 0.18)} GST = ₹{draft.defaultMarkup + Math.round(draft.defaultMarkup * 0.18)} per passenger. Check the correct rate with your CA.
+                e.g. ₹{defaultCharge(draft, EXAMPLE_FARE)} charge + ₹{Math.round(defaultCharge(draft, EXAMPLE_FARE) * 0.18)} GST = ₹{defaultCharge(draft, EXAMPLE_FARE) + Math.round(defaultCharge(draft, EXAMPLE_FARE) * 0.18)} per passenger. Check the correct rate with your CA.
               </span>
             </span>
           </label>
 
-          <fieldset className="fee-settings">
-            <legend>Airline payment fee (approx.)</legend>
-            <p className="muted small-text">
-              Fee the airline adds on its payment page (convenience/processing fee). Charged <b>per passenger, per flight</b>; a
-              connecting trip with 2 flights counts twice. Check the amount on each airline's payment page for your usual payment
-              method, and update it here when it changes.
-            </p>
-            <div className="fee-grid">
-              <label className="field">
-                <span>All airlines (default)</span>
-                <input type="number" min={0} max={5000} step={10} value={draft.paymentFees.default ?? ''} placeholder="0"
-                  onChange={(e) => setFee('default', e.target.value)} />
-              </label>
-              {FEE_AIRLINES.map(([code, name]) => (
-                <label key={code} className="field">
-                  <span>{name}</span>
-                  <input type="number" min={0} max={5000} step={10} value={draft.paymentFees[code] ?? ''}
-                    placeholder={draft.paymentFees.default !== undefined ? `${draft.paymentFees.default} (default)` : 'default'}
-                    onChange={(e) => setFee(code, e.target.value)} />
-                </label>
-              ))}
-            </div>
-          </fieldset>
           {error && <p className="form-error" role="alert">{error}</p>}
           <div className="form-actions">
             <button className="btn primary" type="submit">Save profile</button>

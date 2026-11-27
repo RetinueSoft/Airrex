@@ -63,7 +63,7 @@ export default function ResultsPage() {
     setQuoteIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : ids.length >= MAX_QUOTE_FLIGHTS ? ids : [...ids, id]));
   }
   /** From the details screen: add with the fee/charge shown there (then show the quote bar), or remove. */
-  function toggleQuoteFromDetails(o: FlightOffer, feePerLeg: number, chargePerPerson: number) {
+  function toggleQuoteFromDetails(o: FlightOffer, feePerLeg: number, chargePerPerson?: number) {
     if (quoteIds.includes(o.id)) {
       setQuoteIds((ids) => ids.filter((x) => x !== o.id));
       return;
@@ -74,7 +74,7 @@ export default function ResultsPage() {
     }
     setQuoteIds((ids) => [...ids, o.id]);
     setQuoteFees((f) => ({ ...f, [o.id]: feePerLeg }));
-    setQuoteMarkup(chargePerPerson);
+    if (chargePerPerson !== undefined) setQuoteMarkup(chargePerPerson); // changed by hand in the details screen
     setQuoteOpenSignal((n) => n + 1);
     setDetails(null);
   }

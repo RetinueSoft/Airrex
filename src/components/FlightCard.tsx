@@ -137,22 +137,26 @@ export default function FlightCard({
 
         <div className="price-col">
           <div className="price-block">
-            <p className="price">{money(offer.fare.total, offer.fare.currency)}</p>
+            {/* Agents: airline price first, then what the customer pays (airline fare + fees + their service
+                charge) as the main price, then how it's made up. */}
+            {cp && cp.total > cp.airline && (
+              <p className="muted small-text">Airline price {money(cp.airline, offer.fare.currency)}</p>
+            )}
+            <p className="price">{money(cp ? cp.total : offer.fare.total, offer.fare.currency)}</p>
             <p className="muted small-text">
               {group
-                ? `${money(offer.fare.perPerson!, offer.fare.currency)} × ${offer.fare.passengers} · est. total`
+                ? `${money(cp ? cp.perPerson : offer.fare.perPerson!, offer.fare.currency)} × ${offer.fare.passengers} · est. total` +
+                  (offer.fare.processingFee !== undefined
+                    ? ` · incl. ${money(offer.fare.processingFee, offer.fare.currency)} ${offer.fare.processingFeeKind ?? 'airline fee'}`
+                    : '')
                 : offer.fare.processingFee !== undefined
-                  ? 'incl. taxes & airline fees'
-                  : 'total incl. taxes'}
+                  ? `incl. taxes + ${money(offer.fare.processingFee, offer.fare.currency)} ${offer.fare.processingFeeKind ?? 'airline fee'}`
+                  : cp && cp.agency > 0
+                    ? 'incl. taxes'
+                    : 'total incl. taxes'}
+              {/* Agents: their service charge from their setting (fixed ₹ / % of fare), incl. GST when on. */}
+              {cp && cp.agency > 0 && ` + ${money(cp.agency, offer.fare.currency)} service charge`}
             </p>
-            {cp && cp.total > cp.airline && (
-              <p
-                className="customer-line"
-                title={`Airline ${money(cp.airline, offer.fare.currency)} + payment fee ${money(cp.paymentFee, offer.fare.currency)} + your charge ${money(cp.agency, offer.fare.currency)}`}
-              >
-                Customer pays {money(cp.total, offer.fare.currency)}
-              </p>
-            )}
           </div>
           <div className="price-actions">
             {onToggleQuote && (

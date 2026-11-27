@@ -105,7 +105,7 @@ function scaleOffer(offer: FlightOffer, passengers: number, origin: string, dest
       total,
       perPerson: Math.round(total / passengers),
       passengers,
-      ...(rule ? { processingFee: fee, processingFeeLabel: rule.label } : {}),
+      ...(rule ? { processingFee: fee, processingFeeLabel: rule.label, processingFeeKind: rule.kind } : {}),
     },
   };
 }

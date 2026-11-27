@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAgent } from '../lib/agent.tsx';
-import { customerPrice, paymentFeePerLeg } from '../lib/charges.ts';
+import { chargeRule, customerPrice, defaultCharge } from '../lib/charges.ts';
 import { extraBagLabel } from '../../shared/baggage.ts';
 import type { Baggage, FlightOffer, SearchQuery } from '../../shared/types.ts';
 import { airlineInfo } from '../../shared/airlines.ts';
@@ -68,7 +68,8 @@ export default function FlightDetails({
   /** Agents: whether this flight is already in the quote being built. */
   inQuote?: boolean;
   /** Agents: add/remove this flight, passing the payment fee (per passenger per leg) and charge shown here. */
-  onToggleQuote?: (feePerLeg: number, chargePerPerson: number) => void;
+  /** chargePerPerson is set only when the agent changed the charge for this flight. */
+  onToggleQuote?: (feePerLeg: number, chargePerPerson?: number) => void;
 }) {
   const closeRef = useRef<HTMLButtonElement>(null);
   const airline = airlineInfo(offer.airlineCode, offer.airlineName);
@@ -81,9 +82,9 @@ export default function FlightDetails({
   // Agents: their service charge on top of the airline fare (starts at the profile default, editable here).
   const { agent } = useAgent();
   const isAgent = !!agent?.active;
-  const [chargeInput, setChargeInput] = useState(agent?.defaultMarkup ?? 0);
-  const [feeInput, setFeeInput] = useState(paymentFeePerLeg(agent, offer.airlineCode));
-  const cp = agent ? customerPrice(offer, agent, { feePerLeg: feeInput, chargePerPerson: chargeInput }) : undefined;
+  const defaultChargeHere = agent ? defaultCharge(agent, fare.perPerson ?? fare.total / (fare.passengers ?? 1)) : 0;
+  const [chargeInput, setChargeInput] = useState(defaultChargeHere);
+  const cp = agent ? customerPrice(offer, agent, { chargePerPerson: chargeInput }) : undefined;
   const charge = cp?.charge ?? { charge: 0, gst: 0, total: 0 };
   const customerPays = cp?.total ?? fare.total;
 
@@ -182,25 +183,6 @@ export default function FlightDetails({
               </tr>
               {isAgent && cp && (
                 <>
-                  <tr className="fee-row">
-                    <td>
-                      <label className="charge-edit">
-                        Airline payment fee (approx.)
-                        <span className="charge-input">
-                          ₹<input
-                            type="number"
-                            min={0}
-                            step={10}
-                            value={feeInput}
-                            onChange={(e) => setFeeInput(Math.max(0, Math.round(Number(e.target.value) || 0)))}
-                            aria-label="Airline payment fee per passenger per flight"
-                          />
-                          × {passengers} passenger{passengers > 1 ? 's' : ''}{cp.legs > 1 ? ` × ${cp.legs} flights` : ''}
-                        </span>
-                      </label>
-                    </td>
-                    <td>{money(cp.paymentFee, fare.currency)}</td>
-                  </tr>
                   <tr className="agency-row">
                     <td>
                       <label className="charge-edit">
@@ -236,8 +218,8 @@ export default function FlightDetails({
           </table>
           {isAgent && (
             <p className="muted small-text">
-              Only you see this breakdown. The payment fee is an estimate of what {airline.name} adds on its payment page; the
-              defaults come from your profile{agent!.gstOnCharge ? ' (GST on your charge is on)' : ''}. <Link to="/agent">Change defaults</Link>
+              Only you see this breakdown. Your default charge is {chargeRule(agent!)}
+              {agent!.gstOnCharge ? ' (+ GST)' : ''}. <Link to="/agent">Change defaults</Link>
             </p>
           )}
           {group && (
@@ -301,7 +283,7 @@ export default function FlightDetails({
             <button
               className={`btn quote-btn ${inQuote ? 'active' : ''}`}
               aria-pressed={inQuote}
-              onClick={() => onToggleQuote(feeInput, chargeInput)}
+              onClick={() => onToggleQuote(0, chargeInput === defaultChargeHere ? undefined : chargeInput)}
               title={inQuote ? 'Remove this flight from the quote' : 'Add with the payment fee and charge shown above'}
             >
               <Icon name={inQuote ? 'check_circle' : 'add_circle'} /> {inQuote ? 'In quote · remove' : 'Add to quote'}

@@ -228,7 +228,7 @@
   // fare breakdown where fees such as IndiGo's convenience fee appear) ----------
   async function capture() {
     if (!trip) return;
-    const page = E.capturePage();
+    const page = E.capturePage(trip);
     if (!page.lines.length) return;
     const signature = page.path + '|' + page.lines.map((l) => l.text).join('\n');
     if (signature === lastSignature) return;

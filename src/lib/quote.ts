@@ -5,20 +5,20 @@ import { airlineInfo } from '../../shared/airlines.ts';
 import { findAirport } from '../../shared/airports.ts';
 import { baggageSummary, extraBagLabel } from '../../shared/baggage.ts';
 import { duration, money, prettyDate, time } from './format.ts';
-import { legs, paymentFeePerLeg } from './charges.ts';
+import { legs } from './charges.ts';
 
 /** Customer price per person for one quoted flight: airline fare + payment fee + agency charge. */
 export function quotePerPerson(f: QuoteFlight, markupPerPerson: number) {
-  return f.farePerPerson + (f.paymentFeePerPerson ?? 0) + markupPerPerson;
+  return f.farePerPerson + (f.paymentFeePerPerson ?? 0) + (f.markupPerPerson ?? markupPerPerson);
 }
 
 /** `feePerLeg` overrides the agent's default payment fee for this flight (e.g. edited in the details screen). */
-export function toQuoteFlight(o: FlightOffer, agent?: Pick<AgentProfile, 'paymentFees'> | null, feePerLeg?: number): QuoteFlight {
+export function toQuoteFlight(o: FlightOffer, _agent?: unknown, feePerLeg?: number): QuoteFlight {
   const first = o.segments[0];
   const last = o.segments[o.segments.length - 1];
   const passengers = o.fare.passengers ?? 1;
   return {
-    paymentFeePerPerson: (feePerLeg ?? paymentFeePerLeg(agent, o.airlineCode)) * legs(o),
+    paymentFeePerPerson: (feePerLeg ?? 0) * legs(o),
     airline: o.airlineName.includes('+') ? o.airlineName : airlineInfo(o.airlineCode, o.airlineName).name,
     flightNumbers: o.segments.map((s) => s.flightNumber).join(' + '),
     departAt: first.departAt,

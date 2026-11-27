@@ -35,6 +35,8 @@ export interface FareBreakdown {
   /** Airline processing fee for the whole booking, already included in `total` (e.g. Scoot). */
   processingFee?: number;
   processingFeeLabel?: string;
+  /** Short name for cards, e.g. "convenience fee". */
+  processingFeeKind?: string;
 }
 
 /**
@@ -150,7 +152,17 @@ export interface AgentProfile {
   /** Printed at the bottom of tickets, e.g. terms or "Thank you for booking with us". */
   ticketFooter: string;
   /** Default service charge per passenger (INR) added to WhatsApp quotes. */
+  /** Fixed service charge per passenger (INR); the lower limit in 'range' mode. */
   defaultMarkup: number;
+  /** Upper limit per passenger (INR) in 'range' mode. */
+  markupMax: number;
+  /** Service charge as % of the airline fare per passenger. */
+  markupPercent: number;
+  /**
+   * fixed = ₹ only, percent = % only, higher/lower = ₹ or %, whichever is higher/lower,
+   * range = % of the fare, but at least defaultMarkup and at most markupMax.
+   */
+  markupMode: 'fixed' | 'percent' | 'higher' | 'lower' | 'range';
   /** Add 18% GST on the agency service charge. */
   gstOnCharge: boolean;
   /**
@@ -177,6 +189,8 @@ export interface QuoteFlight {
   farePerPerson: number;
   /** Airline payment-page fee per person (all legs). Missing on quotes saved before this existed. */
   paymentFeePerPerson?: number;
+  /** This flight's agency charge per person incl. GST (when the charge depends on the fare, e.g. a %). */
+  markupPerPerson?: number;
   currency: string;
 }
 

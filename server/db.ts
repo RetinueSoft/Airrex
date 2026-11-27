@@ -24,6 +24,7 @@ export const pool = new pg.Pool(
         password: env.POSTGRES_PASSWORD,
         ssl: env.POSTGRES_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
         max: Number(env.POSTGRES_POOL_SIZE ?? 10),
+        connectionTimeoutMillis: 5000,
       },
 );
 
@@ -87,6 +88,11 @@ const SCHEMA = `
   ALTER TABLE agents ADD COLUMN IF NOT EXISTS gst_on_charge boolean NOT NULL DEFAULT false;
   -- { "default": 350, "6E": 400, ... } INR per passenger per flight leg
   ALTER TABLE agents ADD COLUMN IF NOT EXISTS payment_fees jsonb NOT NULL DEFAULT '{}'::jsonb;
+  -- Service charge: fixed ₹ (default_markup) and/or % of the fare, combined by markup_mode.
+  ALTER TABLE agents ADD COLUMN IF NOT EXISTS markup_percent numeric(5,2) NOT NULL DEFAULT 0;
+  ALTER TABLE agents ADD COLUMN IF NOT EXISTS markup_mode text NOT NULL DEFAULT 'fixed';
+  -- Upper limit (₹) for markup_mode 'range' (% of the fare kept between default_markup and markup_max).
+  ALTER TABLE agents ADD COLUMN IF NOT EXISTS markup_max integer NOT NULL DEFAULT 0;
   CREATE UNIQUE INDEX IF NOT EXISTS agents_email_lower ON agents (lower(email));
 
   CREATE TABLE IF NOT EXISTS sessions (
@@ -207,6 +213,9 @@ export interface AgentRow {
   brand_color: string;
   ticket_footer: string;
   default_markup: number;
+  markup_percent: string | number; // numeric comes back as text from pg
+  markup_mode: string;
+  markup_max: number;
   gst_on_charge: boolean; // add 18% GST on the agency service charge
   payment_fees: Record<string, number>; // airline code (or "default") -> INR per passenger per leg
   created_at: Date;

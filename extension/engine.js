@@ -382,10 +382,87 @@
    * add their convenience fee): only visible text lines with amounts, never what is typed into card/UPI fields
    * (inputs are skipped, and card forms sit in the payment provider's frames, which aren't read).
    */
-  function capturePage() {
+  function capturePage(trip) {
     const lines = captureLines();
     const heading = (document.querySelector('h1, h2')?.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 120);
-    return { host: location.host, path: location.pathname.slice(0, 200), title: document.title.slice(0, 120), heading, lines, paymentPage: isPaymentPage() };
+    return {
+      host: location.host,
+      path: location.pathname.slice(0, 200),
+      title: document.title.slice(0, 120),
+      heading,
+      lines,
+      paymentPage: isPaymentPage(),
+      ...(trip ? { match: tripMatch(trip) } : {}),
+    };
+  }
+
+  // ---------- Is this page about the trip AirRex handed over? ----------
+  // People change the date or flight on the airline's site after continuing from AirRex. Prices must only be
+  // recorded against the trip when the page shows the trip's own date and flight.
+
+  const MON_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+  /** Ways airline sites write a date: "07 Dec 2026", "7 Dec", "Dec 7", "07/12/2026", "2026-12-07"... */
+  function dateRegex(ymd) {
+    const [y, m, d] = ymd.split('-');
+    const dn = String(Number(d));
+    const mon = MON_SHORT[Number(m) - 1];
+    const monLong = MONTHS_LONG[Number(m) - 1];
+    const parts = [
+      `0?${dn}(st|nd|rd|th)?[\\s,.-]*(${mon}|${monLong})\\b`,
+      `\\b(${mon}|${monLong})[a-z]*[\\s,.-]*0?${dn}\\b`,
+      `\\b0?${dn}[/.-]0?${Number(m)}[/.-](${y}|${y.slice(2)})\\b`,
+      `\\b${y}-${m}-${d}\\b`,
+    ];
+    return new RegExp(`(^|[^\\d])(${parts.join('|')})`, 'i');
+  }
+
+  /** "6E 1349" matches "6E1349", "6E-1349", "6E 1349" on the page. */
+  const flightRe = (fn) => {
+    const [code, num] = fn.trim().split(/\s+/);
+    return new RegExp(`\\b${code}\\s*-?\\s*0*${num}\\b`, 'i');
+  };
+
+  /**
+   * Does this page show the trip? Returns:
+   *  dateOk      — the travel date appears on the page;
+   *  flightOk    — every flight number of the trip appears;
+   *  otherFlights — other flight numbers of the same airline appear too (a list of flights, e.g. flight select);
+   *  rowPrice    — on such a list, the lowest price in the trip flight's own row ("Starts at ₹12,227").
+   */
+  function tripMatch(trip) {
+    const text = (document.body.innerText || '').replace(/\s+/g, ' ');
+    const flights = String(trip.offer.flightNumbers || '').split('+').map((s) => s.trim()).filter(Boolean);
+    const dateOk = dateRegex(trip.query.date).test(text);
+    const flightOk = flights.length > 0 && flights.every((f) => flightRe(f).test(text));
+    const code = trip.offer.airlineCode;
+    const allOfAirline = new Set((text.match(new RegExp(`\\b${code}\\s*-?\\s*\\d{2,4}\\b`, 'gi')) || []).map((s) => s.replace(/\D/g, '')));
+    const ours = new Set(flights.map((f) => f.replace(/\D/g, '').replace(/^0+/, '')));
+    const otherFlights = [...allOfAirline].some((n) => !ours.has(n.replace(/^0+/, '')));
+    // On a list of flights the page shows several dates (date strip), so the row itself must show the trip date.
+    const row = flightOk && otherFlights ? rowPrice(flights[0], code, dateRegex(trip.query.date)) : null;
+    return { dateOk, flightOk, otherFlights, rowPrice: row };
+  }
+
+  /**
+   * Lowest amount in the smallest box around the flight number that holds a price but no other flight
+   * (its row in a list of flights), or null when that row doesn't show the trip's date.
+   */
+  function rowPrice(flight, code, dateRe) {
+    const re = flightRe(flight);
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      if (!re.test(n.textContent || '') || n.parentElement?.closest('#airrex-helper-root')) continue;
+      let box = n.parentElement;
+      for (let depth = 0; box && depth < 12; depth++, box = box.parentElement) {
+        const t = (box.innerText || '').replace(/\s+/g, ' ');
+        const others = (t.match(new RegExp(`\\b${code}\\s*-?\\s*\\d{2,4}\\b`, 'gi')) || []).filter((s) => !re.test(s));
+        if (others.length) break; // grew past this flight's row
+        const amounts = (t.match(AMOUNT_ALL) || []).map((a) => Math.round(Number(a.replace(/[^\d.]/g, '')))).filter((x) => x > 0);
+        if (amounts.length) return dateRe.test(t) ? Math.min(...amounts) : null;
+      }
+    }
+    return null;
   }
 
   // ---------- Flight search form (one way, from, to, date) ----------

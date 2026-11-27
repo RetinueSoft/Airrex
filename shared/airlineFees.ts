@@ -12,18 +12,21 @@ export interface ProcessingFeeRule {
   /** Only for flights departing from these countries. */
   departingFrom: string[];
   label: string;
+  /** Short name shown on flight cards, e.g. "convenience fee". */
+  kind: string;
 }
 
 export const PROCESSING_FEES: Record<string, ProcessingFeeRule> = {
   // Scoot: ₹450 per booking + 18% GST for flights departing India (flyscoot.com payment methods page).
   // Scoot shows the exact fee before payment; update this if it changes.
-  TR: { perBooking: 531, departingFrom: ['IN'], label: 'Scoot processing fee (₹450 + GST, per booking)' },
+  TR: { perBooking: 531, departingFrom: ['IN'], label: 'Scoot processing fee (₹450 + GST, per booking)', kind: 'processing fee' },
   // Air India Express convenience fee per passenger per segment: ₹325 domestic, ₹549 international
   // (airindiaexpress.com "Fees & Charges" PDF, Oct 2026).
   IX: {
     perPassengerPerSegment: { domestic: 325, international: 549 },
     departingFrom: ['IN'],
     label: 'Air India Express convenience fee',
+    kind: 'convenience fee',
   },
   // IndiGo convenience fee, added on the payment page ("will vary depending on ... type of fare, journey type"):
   //   domestic ₹499 for cards / net banking / mobile app (goindigo.in "Fees and Charges", Nov 2026);
@@ -34,6 +37,7 @@ export const PROCESSING_FEES: Record<string, ProcessingFeeRule> = {
     perPassengerPerSegment: { domestic: 499, international: 649 },
     departingFrom: ['IN'],
     label: 'IndiGo convenience fee (card / net banking)',
+    kind: 'convenience fee',
   },
 };
 

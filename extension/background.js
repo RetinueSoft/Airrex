@@ -56,6 +56,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             airlineCode: trip.offer.airlineCode,
             flightNumbers: trip.offer.flightNumbers,
             shownTotal: trip.offer.shownTotal,
+            googlePerPerson: trip.offer.googlePerPerson,
           },
           page: msg.page,
           helperVersion: chrome.runtime.getManifest().version,

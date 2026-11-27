@@ -17,6 +17,8 @@ export interface HelperTrip {
     departAt: string;
     shownTotal: number;
     shownPerPerson?: number;
+    /** Google Flights' 1-adult price for this flight (before airline fees and site adjustments). */
+    googlePerPerson?: number;
     processingFee?: number;
     currency: string;
   };
@@ -67,6 +69,8 @@ export function helperTrip(query: SearchQuery, offer: FlightOffer, passengers: P
       departAt: offer.segments[0].departAt,
       shownTotal: offer.fare.total,
       shownPerPerson: offer.fare.perPerson,
+      googlePerPerson:
+        Math.round((offer.fare.total - (offer.fare.processingFee ?? 0)) / Math.max(1, query.adults)),
       processingFee: offer.fare.processingFee,
       currency: offer.fare.currency,
     },

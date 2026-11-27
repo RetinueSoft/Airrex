@@ -8,7 +8,7 @@ import { quotesApi } from '../lib/agent.tsx';
 import { quotePerPerson, quoteText, toQuoteFlight, whatsappLink } from '../lib/quote.ts';
 import { money } from '../lib/format.ts';
 import Icon from './Icon.tsx';
-import { agencyCharge, legs, paymentFeePerLeg } from '../lib/charges.ts';
+import { agencyCharge, defaultCharge } from '../lib/charges.ts';
 
 export const MAX_QUOTE_FLIGHTS = 5;
 
@@ -43,8 +43,8 @@ export default function QuoteTray({
   const [open, setOpen] = useState(defaultOpen);
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
-  const [markup, setMarkup] = useState(markupOverride ?? agent.defaultMarkup);
-  const [fees, setFees] = useState<Record<string, number>>({}); // edits made in this bar
+  // null = automatic: each flight gets the agent's default rule (fixed ₹ and/or % of its fare).
+  const [markup, setMarkup] = useState<number | null>(markupOverride ?? null);
   const [status, setStatus] = useState('');
   const previewRef = useRef<HTMLPreElement>(null);
 
@@ -64,27 +64,23 @@ export default function QuoteTray({
   useEffect(() => {
     if (openSignal) setOpen(true);
   }, [openSignal]);
-  // A value set in the details screen wins over an earlier edit in this bar.
-  useEffect(() => {
-    if (!feeOverrides) return;
-    setFees((f) => {
-      const next = { ...f };
-      for (const id of Object.keys(feeOverrides)) delete next[id];
-      return next;
-    });
-  }, [feeOverrides]);
-
-  const feePerLeg = (o: FlightOffer) => fees[o.id] ?? feeOverrides?.[o.id] ?? paymentFeePerLeg(agent, o.airlineCode);
 
   // The quote stores the agency charge per person INCLUDING GST (when GST is on), so totals stay consistent.
-  const c = agencyCharge(agent, markup);
+  const farePP = (o: FlightOffer) => o.fare.perPerson ?? Math.round(o.fare.total / (o.fare.passengers ?? 1));
+  /** Agency charge per person (with GST) for one flight: the typed amount, or the agent's default rule. */
+  const chargeFor = (o: FlightOffer) => agencyCharge(agent, markup ?? defaultCharge(agent, farePP(o)));
+  const c = markup !== null ? agencyCharge(agent, markup) : flights[0] ? chargeFor(flights[0]) : agencyCharge(agent, 0);
+  // The amount the agent's rule works out to (e.g. "₹500 or 5%, whichever is lower" -> ₹500), shown in the box.
+  // With several flights it can differ per flight; then the box shows "Varies" and each flight line has its own.
+  const autoAmounts = flights.map((o) => defaultCharge(agent, farePP(o)));
+  const autoUniform = autoAmounts.length > 0 && autoAmounts.every((x) => x === autoAmounts[0]) ? autoAmounts[0] : null;
   const data = {
     origin: query.origin,
     destination: query.destination,
     date: query.date,
     adults: query.adults,
     markupPerPerson: c.total,
-    flights: flights.map((o) => toQuoteFlight(o, agent, feePerLeg(o))),
+    flights: flights.map((o) => ({ ...toQuoteFlight(o), markupPerPerson: chargeFor(o).total })),
   };
   const payloadKey = JSON.stringify([customerName, customerPhone, data]);
 
@@ -157,7 +153,7 @@ export default function QuoteTray({
     setSaveState('idle');
     setCustomerName('');
     setCustomerPhone('');
-    setFees({});
+    setMarkup(null);
     setStatus('');
     onClear();
   }
@@ -202,33 +198,31 @@ export default function QuoteTray({
                 <input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} maxLength={20} inputMode="tel" placeholder="10-digit mobile" />
               </label>
               <label className="field small"><span>Your charge / person (₹)</span>
-                <input type="number" min={0} step={50} value={markup} onChange={(e) => setMarkup(Math.max(0, Math.round(Number(e.target.value) || 0)))} />
-                {c.gst > 0 && <span className="hint-text">+ 18% GST ₹{c.gst} = ₹{c.total} per person</span>}
+                <input
+                  type="number"
+                  min={0}
+                  step={50}
+                  value={markup ?? autoUniform ?? ''}
+                  placeholder="Varies"
+                  onChange={(e) => setMarkup(e.target.value === '' ? null : Math.max(0, Math.round(Number(e.target.value) || 0)))}
+                />
+                {markup !== null && (
+                  <span className="hint-text">
+                    <button type="button" className="link-btn" onClick={() => setMarkup(null)}>Use my setting</button>
+                  </span>
+                )}
               </label>
             </div>
             <ul className="quote-items">
               {flights.map((f, i) => {
                 const q = data.flights[i];
-                const n = legs(f);
                 return (
                   <li key={f.id}>
                     <span className="qi-main">
                       <span>{i + 1}) <b>{q.airline}</b> {q.flightNumbers}</span>
                       <span className="qi-calc muted small-text">
                         Fare {money(q.farePerPerson, q.currency)}
-                        <span className="qi-fee">
-                          + payment fee ₹
-                          <input
-                            type="number"
-                            min={0}
-                            step={10}
-                            value={feePerLeg(f)}
-                            onChange={(e) => setFees({ ...fees, [f.id]: Math.max(0, Math.round(Number(e.target.value) || 0)) })}
-                            aria-label={`Airline payment fee per passenger for ${q.airline} ${q.flightNumbers}`}
-                          />
-                          {n > 1 && <> × {n} flights</>}
-                        </span>
-                        + your {money(c.total, q.currency)} = {money(quotePerPerson(q, c.total), q.currency)}/person
+                        {' '}+ your {money(q.markupPerPerson ?? c.total, q.currency)} = {money(quotePerPerson(q, c.total), q.currency)}/person
                       </span>
                     </span>
                     <b>{money(quotePerPerson(q, c.total) * query.adults, q.currency)}</b>

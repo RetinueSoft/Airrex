@@ -90,6 +90,9 @@ function toProfile(a: AgentRow): AgentProfile {
     brandColor: a.brand_color,
     ticketFooter: a.ticket_footer,
     defaultMarkup: a.default_markup,
+    markupPercent: Number(a.markup_percent) || 0,
+    markupMax: a.markup_max ?? 0,
+    markupMode: (['fixed', 'percent', 'higher', 'lower', 'range'].includes(a.markup_mode) ? a.markup_mode : 'fixed') as AgentProfile['markupMode'],
     gstOnCharge: a.gst_on_charge,
     paymentFees: a.payment_fees && typeof a.payment_fees === 'object' ? a.payment_fees : {},
     trialEndsAt: a.trial_ends_at.toISOString(),
@@ -275,6 +278,12 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
         if (!/^#[0-9a-f]{6}$/i.test(brandColor)) throw new HttpError(400, 'Brand colour must look like #1A2B3C');
         const markup = Number(body.defaultMarkup ?? 0);
         if (!Number.isInteger(markup) || markup < 0 || markup > 100000) throw new HttpError(400, 'Service charge must be a whole number of rupees');
+        const markupPercent = Math.round(Number(body.markupPercent ?? 0) * 100) / 100;
+        if (!Number.isFinite(markupPercent) || markupPercent < 0 || markupPercent > 50) throw new HttpError(400, 'Service charge % must be between 0 and 50');
+        const markupMode = ['fixed', 'percent', 'higher', 'lower', 'range'].includes(String(body.markupMode)) ? String(body.markupMode) : 'fixed';
+        const markupMax = Number(body.markupMax ?? 0);
+        if (!Number.isInteger(markupMax) || markupMax < 0 || markupMax > 100000) throw new HttpError(400, 'Upper limit must be a whole number of rupees');
+        if (markupMode === 'range' && markupMax < markup) throw new HttpError(400, 'Upper limit must be at least the lower limit');
         const agencyName = str(body.agencyName, 120, 'Agency name');
         if (!agencyName) throw new HttpError(400, 'Agency name is required');
         const gstin = str(body.gstin, 15, 'GSTIN').toUpperCase();
@@ -283,7 +292,7 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
         const updated = await one<AgentRow>(
           `UPDATE agents SET contact_name = $1, agency_name = $2, phone = $3, whatsapp = $4, address = $5, city = $6,
              gstin = $7, website = $8, logo = $9, brand_color = $10, ticket_footer = $11, default_markup = $12,
-             gst_on_charge = $13, payment_fees = $14::jsonb
+             gst_on_charge = $13, payment_fees = $14::jsonb, markup_percent = $16, markup_mode = $17, markup_max = $18
            WHERE id = $15 RETURNING *`,
           [
             str(body.contactName, 120, 'Name'),
@@ -301,6 +310,9 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
             body.gstOnCharge === true,
             JSON.stringify(validateFees(body.paymentFees)),
             a.id,
+            markupPercent,
+            markupMode,
+            markupMax,
           ],
         );
         send(res, 200, toProfile(updated!));
