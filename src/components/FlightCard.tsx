@@ -1,6 +1,6 @@
 import type { Baggage, FlightOffer } from '../../shared/types.ts';
 import { airlineInfo } from '../../shared/airlines.ts';
-import { baggageSummary } from '../../shared/baggage.ts';
+import { baggageSummary, extraBagLabel } from '../../shared/baggage.ts';
 import { dayOffset, duration, money, time } from '../lib/format.ts';
 import Icon from './Icon.tsx';
 import { useAgent } from '../lib/agent.tsx';
@@ -20,9 +20,14 @@ export function AirlineBadge({ code, name, logo }: { code: string; name: string;
 export function BaggageChip({ baggage }: { baggage?: Baggage }) {
   const { label, tone } = baggageSummary(baggage);
   const icon = tone === 'ok' ? 'luggage' : tone === 'warn' ? 'work_outline' : 'info';
+  const extra = extraBagLabel(baggage, true);
   return (
-    <span className={`pill pill-${tone}`} title={baggage?.notes?.join(' · ') ?? 'Baggage allowance not provided. Check on the airline site.'}>
+    <span
+      className={`pill pill-${tone}`}
+      title={[extraBagLabel(baggage), ...(baggage?.notes ?? [])].filter(Boolean).join(' · ') || 'Baggage allowance not provided. Check on the airline site.'}
+    >
       <Icon name={icon} size={14} /> {label}
+      {extra && <span className="pill-extra"> · {extra}</span>}
     </span>
   );
 }
@@ -136,7 +141,9 @@ export default function FlightCard({
             <p className="muted small-text">
               {group
                 ? `${money(offer.fare.perPerson!, offer.fare.currency)} × ${offer.fare.passengers} · est. total`
-                : 'total incl. taxes'}
+                : offer.fare.processingFee !== undefined
+                  ? 'incl. taxes & airline fees'
+                  : 'total incl. taxes'}
             </p>
             {cp && cp.total > cp.airline && (
               <p

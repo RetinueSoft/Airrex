@@ -63,7 +63,7 @@ With no configuration, the API returns **demo fares**. These are deterministic, 
 
 How searches are used:
 - **One search per new route + date** (always Economy, always searched for 1 adult). For 2+ adults the app multiplies the 1-adult fare, so the group size doesn't use extra searches. Group totals are marked as estimates, because an airline can charge more when few seats are left at the cheapest fare. Results are reused for `SEARCH_CACHE_MINUTES` (default 720 = 12 hours) and saved in `.cache/`, so restarts don't use searches again. The results page shows "Prices checked X min ago".
-- **One search when a user opens the booking pop-up** for a flight with no saved links (cached for 30 minutes). This gets the links for where the flight is sold: the airline's own website first, then other sites like OTAs.
+- **Opening the booking pop-up is free.** It shows links already saved for that flight, otherwise "Continue to <airline>" (the airline's website). Only when the user clicks **Get the direct link for this flight** does the app spend one search to fetch where the flight is sold (the airline's own website first, then other sites like OTAs). Those links are saved for 3 hours.
 - When the quota runs out, users see "Live prices are temporarily unavailable". Set `FALLBACK_TO_DEMO=true` to show labelled demo fares instead (useful in development).
 
 Google Flights gives one total price including taxes, with no base/tax split, so the fare details show only "You pay".

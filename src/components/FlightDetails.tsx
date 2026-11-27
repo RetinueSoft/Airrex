@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAgent } from '../lib/agent.tsx';
 import { customerPrice, paymentFeePerLeg } from '../lib/charges.ts';
+import { extraBagLabel } from '../../shared/baggage.ts';
 import type { Baggage, FlightOffer, SearchQuery } from '../../shared/types.ts';
 import { airlineInfo } from '../../shared/airlines.ts';
 import { findAirport } from '../../shared/airports.ts';
@@ -12,18 +13,19 @@ import { AirlineBadge, airlineDisplayName } from './FlightCard.tsx';
 import Icon from './Icon.tsx';
 
 function BaggageTable({ baggage: b }: { baggage?: Baggage }) {
+  const usual = b?.typical ? ' (usual for this airline)' : '';
   const cabin =
     b?.cabinIncluded === true
-      ? { text: `Included${b.cabinKg ? ` · ${b.cabinKg} kg` : ''}`, tone: 'ok' }
+      ? { text: `Included${b.cabinKg ? ` · ${b.cabinKg} kg` : ''}${usual}`, tone: 'ok' }
       : b?.cabinIncluded === false
         ? { text: 'Not included', tone: 'warn' }
         : { text: 'Usually 1 bag (about 7 kg) on Indian domestic flights. Check airline.', tone: 'unknown' };
   const checked =
     b?.checkedIncluded === true
-      ? { text: `Included${b.checkInKg ? ` · ${b.checkInKg} kg` : ''}`, tone: 'ok' }
+      ? { text: `Included${b.checkInKg ? ` · ${b.checkInKg} kg` : ''}${usual}`, tone: 'ok' }
       : b?.checkedIncluded === false
-        ? { text: b.checkedForFee ? 'Not included · available for a fee' : 'Not included', tone: 'warn' }
-        : { text: 'Not stated for this fare. Check airline.', tone: 'unknown' };
+        ? { text: `${b.checkedForFee ? 'Not included · available for a fee' : 'Not included'}${usual}`, tone: 'warn' }
+        : { text: b?.typical ? 'Depends on the fare type. Check airline.' : 'Not stated for this fare. Check airline.', tone: 'unknown' };
   return (
     <table className="bag-table">
       <tbody>
@@ -34,6 +36,12 @@ function BaggageTable({ baggage: b }: { baggage?: Baggage }) {
         <tr>
           <th scope="row">🛄 Check-in bag</th>
           <td className={`bag-${checked.tone}`}>{checked.tone === 'ok' ? '✓ ' : checked.tone === 'warn' ? '✕ ' : ''}{checked.text}</td>
+        </tr>
+        <tr>
+          <th scope="row">➕ Extra baggage</th>
+          <td className="bag-unknown">
+            {extraBagLabel(b) ? `${extraBagLabel(b)}${b?.typical ? ' · usual price' : ''}` : "Price shown on the airline's website"}
+          </td>
         </tr>
       </tbody>
     </table>
@@ -161,6 +169,9 @@ export default function FlightDetails({
             <tbody>
               {fare.baseFare !== undefined && <tr><td>Base fare</td><td>{money(fare.baseFare, fare.currency)}</td></tr>}
               {fare.taxesAndFees !== undefined && <tr><td>Taxes & fees</td><td>{money(fare.taxesAndFees, fare.currency)}</td></tr>}
+              {fare.processingFee !== undefined && (
+                <tr><td>Incl. {fare.processingFeeLabel ?? 'airline processing fee'}</td><td>{money(fare.processingFee, fare.currency)}</td></tr>
+              )}
               {group && <tr><td>Per adult (incl. taxes)</td><td>{money(fare.perPerson!, fare.currency)}</td></tr>}
               <tr className={isAgent ? 'subtotal' : 'total'}>
                 <td>
@@ -247,7 +258,12 @@ export default function FlightDetails({
             </p>
           )}
           {offer.baggage?.notes && offer.baggage.notes.length > 0 && (
-            <p className="muted small-text">From the airline/fare data: {offer.baggage.notes.join(' · ')}</p>
+            <p className="muted small-text">{offer.baggage.typical ? '' : 'From the airline/fare data: '}{offer.baggage.notes.join(' · ')}</p>
+          )}
+          {offer.baggage?.typical && (
+            <p className="muted small-text">
+              Google Flights doesn't list baggage for this fare, so this is {airline.name}'s usual Economy allowance.
+            </p>
           )}
           <p className="muted small-text">
             Allowances can differ by fare type (e.g. Saver vs Flexi). Confirm on the airline's website before paying.

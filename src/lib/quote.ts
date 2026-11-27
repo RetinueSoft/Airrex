@@ -3,7 +3,7 @@
 import type { AgentProfile, FlightOffer, QuoteFlight, SavedQuote } from '../../shared/types.ts';
 import { airlineInfo } from '../../shared/airlines.ts';
 import { findAirport } from '../../shared/airports.ts';
-import { baggageSummary } from '../../shared/baggage.ts';
+import { baggageSummary, extraBagLabel } from '../../shared/baggage.ts';
 import { duration, money, prettyDate, time } from './format.ts';
 import { legs, paymentFeePerLeg } from './charges.ts';
 
@@ -27,7 +27,7 @@ export function toQuoteFlight(o: FlightOffer, agent?: Pick<AgentProfile, 'paymen
     destination: last.destination,
     stops: o.stops,
     durationMinutes: o.durationMinutes,
-    baggage: baggageSummary(o.baggage).label,
+    baggage: [baggageSummary(o.baggage).label, extraBagLabel(o.baggage)].filter(Boolean).join(' · '),
     farePerPerson: o.fare.perPerson ?? Math.round(o.fare.total / passengers),
     currency: o.fare.currency,
   };

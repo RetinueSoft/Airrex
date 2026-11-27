@@ -4,6 +4,7 @@
 // + agency service charge (+ 18% GST on it, if the agent turned GST on)
 
 import type { AgentProfile, FlightOffer } from '../../shared/types.ts';
+import { PROCESSING_FEES } from '../../shared/airlineFees.ts';
 
 export const GST_RATE = 0.18;
 
@@ -25,7 +26,10 @@ export function agencyCharge(agent: Pick<AgentProfile, 'gstOnCharge'>, chargePer
 /** Payment fee per passenger per flight leg for this airline (airline-specific, else default, else 0). */
 export function paymentFeePerLeg(agent: Pick<AgentProfile, 'paymentFees'> | null | undefined, airlineCode: string) {
   const fees = agent?.paymentFees ?? {};
-  return fees[airlineCode] ?? fees.default ?? 0;
+  if (fees[airlineCode] !== undefined) return fees[airlineCode];
+  // The shown price already includes this airline's processing fee (e.g. Scoot), so don't add the default on top.
+  if (PROCESSING_FEES[airlineCode]) return 0;
+  return fees.default ?? 0;
 }
 
 /** Number of flight legs the fee applies to (one per segment). */

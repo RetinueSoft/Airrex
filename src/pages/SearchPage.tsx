@@ -3,13 +3,16 @@ import SearchForm, { toSearchParams } from '../components/SearchForm.tsx';
 import Icon from '../components/Icon.tsx';
 import { shiftDate, todayYmd } from '../lib/format.ts';
 
+// Popular with travellers from Tamil Nadu.
 const POPULAR = [
-  ['BLR', 'DEL'],
-  ['MAA', 'HYD'],
-  ['BLR', 'COK'],
-  ['HYD', 'BLR'],
-  ['MAA', 'BOM'],
-  ['COK', 'DEL'],
+  ['TRZ', 'SIN'],
+  ['MAA', 'DXB'],
+  ['TRZ', 'KUL'],
+  ['CJB', 'SIN'],
+  ['IXM', 'CMB'],
+  ['MAA', 'DEL'],
+  ['CJB', 'BLR'],
+  ['TRZ', 'SHJ'],
 ];
 
 export default function SearchPage() {

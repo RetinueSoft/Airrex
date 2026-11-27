@@ -32,6 +32,9 @@ export interface FareBreakdown {
   /** Price for one adult. The total is calculated as perPerson × passengers (one search covers any group size). */
   perPerson?: number;
   passengers?: number;
+  /** Airline processing fee for the whole booking, already included in `total` (e.g. Scoot). */
+  processingFee?: number;
+  processingFeeLabel?: string;
 }
 
 /**
@@ -47,6 +50,14 @@ export interface Baggage {
   checkedForFee?: boolean;
   /** Original wording from the data source, e.g. "Checked baggage for a fee". */
   notes?: string[];
+  /** From the airline's usual Economy allowance, not confirmed for this exact fare. */
+  typical?: boolean;
+  /** Cheapest way to carry more: the smallest pre-booked extra-weight slab (INR). */
+  extra?: { kg: number; price: number; airportPerKg?: number };
+  /** Price to add a check-in bag to a cabin-only fare, if the airline publishes one (INR). */
+  addBag?: { kg: number; price: number };
+  /** The airline's next fare type that includes a check-in bag costs this much more per person (INR range). */
+  bagFare?: { kg: number; from: number; to: number };
 }
 
 export interface FlightOffer {
@@ -192,4 +203,6 @@ export interface Airport {
   city: string;
   name: string;
   country: string;
+  /** Other names people type, e.g. Trichy, Bangalore. */
+  aliases?: string[];
 }

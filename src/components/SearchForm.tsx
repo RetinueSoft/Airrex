@@ -14,7 +14,7 @@ export function AirportDatalist() {
   return (
     <datalist id="airports">
       {AIRPORTS.map((a) => (
-        <option key={a.code} value={`${a.city} (${a.code})`}>{a.name}</option>
+        <option key={a.code} value={`${a.city} (${a.code})`}>{a.aliases ? `${a.aliases.join(', ')} · ${a.name}` : a.name}</option>
       ))}
     </datalist>
   );
@@ -27,7 +27,8 @@ export function resolveAirport(text: string): string | null {
   if (inParens) return inParens[1].toUpperCase();
   if (/^[A-Za-z]{3}$/.test(t)) return t.toUpperCase();
   const lower = t.toLowerCase();
-  const match = AIRPORTS.find((a) => a.city.toLowerCase() === lower) ?? AIRPORTS.find((a) => a.city.toLowerCase().startsWith(lower));
+  const names = (a: (typeof AIRPORTS)[number]) => [a.city, ...(a.aliases ?? [])].map((n) => n.toLowerCase());
+  const match = AIRPORTS.find((a) => names(a).includes(lower)) ?? AIRPORTS.find((a) => names(a).some((n) => n.startsWith(lower)));
   return match?.code ?? null;
 }
 

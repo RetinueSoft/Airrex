@@ -14,6 +14,8 @@ export default function BookingModal({ offer, query, onClose }: { offer: FlightO
   const [opened, setOpened] = useState(false);
   const [options, setOptions] = useState<BookingOption[] | null>(null);
   const [optionsError, setOptionsError] = useState('');
+  /** True while asking SerpApi for links (costs one search). */
+  const [fetching, setFetching] = useState(false);
   const first = offer.segments[0];
   const last = offer.segments[offer.segments.length - 1];
   const fallbackUrl = offer.bookingUrl ?? airline.bookingUrl;
@@ -31,18 +33,32 @@ export default function BookingModal({ offer, query, onClose }: { offer: FlightO
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  // Live booking links (where to buy this exact flight). Each uncached load uses one SerpApi search.
+  // Show booking links only if they are already saved: opening the pop-up must not spend a SerpApi search.
+  const [checkedCache, setCheckedCache] = useState(!offer.bookingToken);
   useEffect(() => {
     if (!offer.bookingToken) return;
     const ctrl = new AbortController();
-    fetchBookingOptions(offer.bookingToken, query, ctrl.signal)
-      .then(setOptions)
-      .catch((e) => {
-        if (e.name !== 'AbortError') setOptionsError(e.message);
-      });
+    fetchBookingOptions(offer.bookingToken, query, ctrl.signal, true)
+      .then((o) => o && setOptions(o))
+      .catch(() => {})
+      .finally(() => !ctrl.signal.aborted && setCheckedCache(true));
     return () => ctrl.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [offer.bookingToken]);
+
+  /** Fetch the direct booking links for this flight (uses one SerpApi search; saved for 3 hours). */
+  async function findLinks() {
+    if (!offer.bookingToken) return;
+    setFetching(true);
+    setOptionsError('');
+    try {
+      setOptions(await fetchBookingOptions(offer.bookingToken, query));
+    } catch (e) {
+      setOptionsError(e instanceof Error ? e.message : 'Could not load booking links');
+    } finally {
+      setFetching(false);
+    }
+  }
 
   async function copy() {
     try {
@@ -75,7 +91,8 @@ export default function BookingModal({ offer, query, onClose }: { offer: FlightO
 
   const airlineOptions = options?.filter((o) => o.isAirline && o.url) ?? [];
   const otherOptions = options?.filter((o) => !o.isAirline && o.url) ?? [];
-  const loadingOptions = !!offer.bookingToken && options === null && !optionsError;
+  const loadingOptions = fetching || !checkedCache;
+  const canFindLinks = !!offer.bookingToken && options === null && checkedCache && !fetching;
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -94,7 +111,17 @@ export default function BookingModal({ offer, query, onClose }: { offer: FlightO
           </p>
         )}
 
-        {loadingOptions && <p className="muted">Finding the booking link for this flight…</p>}
+        {fetching && <p className="muted">Finding the booking link for this flight…</p>}
+
+        {canFindLinks && (
+          <button className="book-option" onClick={findLinks}>
+            <span>
+              <b>Get the direct link for this flight</b>
+              <span className="muted"> · opens {airline.name} with this flight, and shows other sites selling it</span>
+            </span>
+            <span>→</span>
+          </button>
+        )}
 
         {airlineOptions.length > 0 && (
           <div className="book-options">

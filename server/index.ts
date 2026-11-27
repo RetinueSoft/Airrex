@@ -14,6 +14,8 @@ import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { extname, join, normalize } from 'node:path';
 import { AIRPORTS } from '../shared/airports.ts';
+import { processingFeeFor, processingFeeTotal } from '../shared/airlineFees.ts';
+import { typicalBaggage } from '../shared/baggagePolicy.ts';
 import type {
   BookingOption,
   CabinClass,
@@ -48,7 +50,8 @@ const FALLBACK_TO_DEMO = env.FALLBACK_TO_DEMO === 'true';
 // Paid searches are reused for 12 hours to save quota. The results page shows "Prices checked X hrs ago".
 const cacheMinutes = Number(env.SEARCH_CACHE_MINUTES ?? (provider === mockProvider ? 5 : 720));
 const searchCache = createCache<SearchResponse>('search', cacheMinutes * 60_000);
-const bookingCache = createCache<BookingOption[]>('booking', 30 * 60_000);
+// Booking links cost one SerpApi search per flight, so they are only fetched when the user asks, and kept 3 hours.
+const bookingCache = createCache<BookingOption[]>('booking', 3 * 60 * 60_000);
 
 function json(res: ServerResponse, status: number, body: unknown) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
@@ -81,17 +84,27 @@ function oneAdult(query: SearchQuery): SearchQuery {
   return { ...query, adults: 1 };
 }
 
-function scaleOffer(offer: FlightOffer, passengers: number): FlightOffer {
+/**
+ * Scale a 1-adult offer to the group and add any processing/convenience fee the airline charges on its
+ * payment page (Scoot: per booking; Air India Express: per passenger per flight).
+ */
+function scaleOffer(offer: FlightOffer, passengers: number, origin: string, destination: string): FlightOffer {
   const f = offer.fare;
+  const rule = processingFeeFor(offer.airlineCode, origin);
+  const fee = rule ? processingFeeTotal(rule, { passengers, segments: offer.segments.length, origin, destination }) : 0;
+  const total = f.total * passengers + fee;
   return {
     ...offer,
+    // Google Flights search results carry no baggage details: fall back to the airline's usual allowance.
+    baggage: offer.baggage ?? typicalBaggage(offer.airlineCode, origin, destination),
     fare: {
       ...f,
       baseFare: f.baseFare !== undefined ? f.baseFare * passengers : undefined,
-      taxesAndFees: f.taxesAndFees !== undefined ? f.taxesAndFees * passengers : undefined,
-      total: f.total * passengers,
-      perPerson: f.total,
+      taxesAndFees: f.taxesAndFees !== undefined ? f.taxesAndFees * passengers + fee : undefined,
+      total,
+      perPerson: Math.round(total / passengers),
       passengers,
+      ...(rule ? { processingFee: fee, processingFeeLabel: rule.label } : {}),
     },
   };
 }
@@ -100,7 +113,8 @@ function scaleOffer(offer: FlightOffer, passengers: number): FlightOffer {
 function forGroup(base: SearchResponse, query: SearchQuery): SearchResponse {
   const offers = base.offers
     .filter((o) => o.seatsLeft === undefined || o.seatsLeft >= query.adults) // not enough seats for the group
-    .map((o) => scaleOffer(o, query.adults));
+    .map((o) => scaleOffer(o, query.adults, query.origin, query.destination))
+    .sort((a, b) => a.fare.total - b.fare.total); // processing fees can change the order
   return { ...base, query, offers };
 }
 
@@ -177,7 +191,7 @@ async function buildCalendar(origin: string, destination: string, dates: string[
     const base: SearchQuery = { origin, destination, date, adults: 1, cabin: 'economy' };
     let saved = searchCache.get(searchKey(base));
     if (!saved && isDemo) saved = await runSearch(base); // demo fares are free to generate
-    const cheapest = saved?.offers.reduce<FlightOffer | undefined>((m, o) => (!m || o.fare.total < m.fare.total ? o : m), undefined);
+    const cheapest = (saved ? forGroup(saved, base).offers : []).reduce<FlightOffer | undefined>((m, o) => (!m || o.fare.total < m.fare.total ? o : m), undefined);
 
     if (cheapest) {
       days.push({
@@ -219,7 +233,7 @@ const server = createServer(async (req, res) => {
 
     if (url.pathname === '/api/airports') {
       const q = (url.searchParams.get('q') ?? '').trim().toLowerCase();
-      const list = q ? AIRPORTS.filter((a) => `${a.code} ${a.city} ${a.name}`.toLowerCase().includes(q)) : AIRPORTS;
+      const list = q ? AIRPORTS.filter((a) => `${a.code} ${a.city} ${a.name} ${a.aliases?.join(' ') ?? ''}`.toLowerCase().includes(q)) : AIRPORTS;
       return json(res, 200, list.slice(0, 20));
     }
 
@@ -245,6 +259,8 @@ const server = createServer(async (req, res) => {
       if (typeof query === 'string') return json(res, 400, { error: query });
       // The token comes from a 1-adult search, so links and prices are per person; multiply for the group.
       let options = bookingCache.get(token);
+      // cachedOnly=1: answer from the cache without spending a search (the pop-up asks this first).
+      if (!options && url.searchParams.get('cachedOnly') === '1') return json(res, 200, null);
       if (!options) {
         options = await serpapi.bookingOptions(token, oneAdult(query));
         bookingCache.set(token, options);

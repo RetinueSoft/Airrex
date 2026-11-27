@@ -30,13 +30,20 @@ export async function searchFlights(q: SearchQuery, signal?: AbortSignal): Promi
   return body as SearchResponse;
 }
 
-export async function fetchBookingOptions(token: string, q: SearchQuery, signal?: AbortSignal): Promise<BookingOption[]> {
+/** Booking links for one flight. With cachedOnly, returns null instead of spending a paid search. */
+export async function fetchBookingOptions(
+  token: string,
+  q: SearchQuery,
+  signal?: AbortSignal,
+  cachedOnly = false,
+): Promise<BookingOption[] | null> {
   const params = queryParams(q);
   params.set('token', token);
+  if (cachedOnly) params.set('cachedOnly', '1');
   const res = await fetch(`/api/booking-options?${params}`, { signal });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body.error ?? `Could not load booking links (${res.status})`);
-  return body as BookingOption[];
+  return body as BookingOption[] | null;
 }
 
 /**
