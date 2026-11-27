@@ -137,7 +137,10 @@ export interface CalendarResponse {
 
 /** Travel agent account as the web app sees it (never includes the password). */
 export interface AgentProfile {
+  /** Contact email (optional). */
   email: string;
+  /** Login mobile number (10 digits). */
+  mobile: string;
   contactName: string;
   agencyName: string;
   phone: string;
@@ -172,6 +175,18 @@ export interface AgentProfile {
   paymentFees: Record<string, number>;
   trialEndsAt: string;
   paidUntil: string | null;
+  /** pending = waiting for the site admin to activate; suspended = turned off by the site admin. */
+  status: 'pending' | 'active' | 'suspended';
+  /** Licence / plan name set by the site admin. */
+  licence: string;
+  /** Days of access after the licence expires. */
+  graceDays: number;
+  /** When the licence ends (ISO). */
+  expiresAt: string;
+  /** When access ends, after the grace period (ISO). */
+  graceEndsAt: string;
+  /** Licence expired but still inside the grace period. */
+  inGrace: boolean;
   /** Trial or paid subscription is running. */
   active: boolean;
 }

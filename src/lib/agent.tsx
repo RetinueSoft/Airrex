@@ -1,7 +1,10 @@
 // Logged-in travel agent, shared across the app.
 
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
-import type { AgentProfile, SavedQuote, PassengerDetails, SavedPassenger } from '../../shared/types.ts';
+import type { AgentProfile, FlightOffer, PassengerDetails, SavedPassenger, SavedQuote, SearchQuery } from '../../shared/types.ts';
+
+import { clearAllTripPassengers } from './tripPassengers.ts';
+import { clearHelper } from './helper.ts';
 
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`/api/agent/${path}`, {
@@ -16,17 +19,17 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
 }
 
 export interface SignupInput {
-  email: string;
+  mobile: string;
   password: string;
   agencyName: string;
   contactName: string;
-  phone: string;
+  email: string;
 }
 
 interface AgentState {
   agent: AgentProfile | null;
   loading: boolean;
-  login(email: string, password: string): Promise<void>;
+  login(mobile: string, password: string): Promise<void>;
   signup(input: SignupInput): Promise<void>;
   logout(): Promise<void>;
   saveProfile(p: Partial<AgentProfile>): Promise<void>;
@@ -46,14 +49,17 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false));
   }, []);
 
-  const login = useCallback(async (email: string, password: string) => {
-    setAgent(await call<AgentProfile>('POST', 'login', { email, password }));
+  const login = useCallback(async (mobile: string, password: string) => {
+    setAgent(await call<AgentProfile>('POST', 'login', { mobile, password }));
   }, []);
   const signup = useCallback(async (input: SignupInput) => {
     setAgent(await call<AgentProfile>('POST', 'signup', input));
   }, []);
   const logout = useCallback(async () => {
     await call('POST', 'logout', {});
+    // Nothing of this agency's work should stay for the next person using this computer.
+    clearAllTripPassengers();
+    clearHelper();
     setAgent(null);
   }, []);
   const saveProfile = useCallback(
@@ -90,8 +96,20 @@ export const passengersApi = {
   remove: (id: number) => call('DELETE', `passengers/${id}`),
 };
 
+export const recentSearchesApi = {
+  list: () => call<{ id: number; origin: string; destination: string; date: string; adults: number; at: string }[]>('GET', 'recent-searches'),
+  save: (s: { origin: string; destination: string; date: string; adults: number }) => call('POST', 'recent-searches', s),
+  remove: (id: number) => call('DELETE', `recent-searches/${id}`),
+};
+
+export const tripsApi = {
+  list: () => call<{ id: number; savedAt: string; query: SearchQuery; offer: FlightOffer }[]>('GET', 'trips'),
+  save: (query: SearchQuery, offer: FlightOffer) => call('POST', 'trips', { query, offer }),
+  remove: (id: number) => call('DELETE', `trips/${id}`),
+};
+
 export function daysLeft(agent: AgentProfile) {
-  const end = Math.max(Date.parse(agent.trialEndsAt), agent.paidUntil ? Date.parse(agent.paidUntil) : 0);
+  const end = Date.parse(agent.inGrace ? agent.graceEndsAt : agent.expiresAt);
   return Math.max(0, Math.ceil((end - Date.now()) / 86400_000));
 }
 

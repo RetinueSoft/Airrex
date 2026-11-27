@@ -12,6 +12,7 @@
     const d = e.data;
     if (!d || typeof d !== 'object' || d.from === 'airrex-helper') return;
     if (d.type === 'airrex:hello') reply({ type: 'airrex:helper', version: VERSION });
+    if (d.type === 'airrex:logout') chrome.runtime.sendMessage({ type: 'trip:clear' });
     if (d.type === 'airrex:trip' && d.trip && typeof d.trip === 'object') {
       chrome.runtime.sendMessage({ type: 'trip:set', trip: d.trip }, (r) => reply({ type: 'airrex:trip-saved', ok: !!r?.ok }));
     }

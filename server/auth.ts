@@ -65,10 +65,21 @@ export async function currentAgent(req: IncomingMessage): Promise<AgentRow | und
   );
 }
 
-/** Trial or paid subscription still running. */
+/** When the agency's licence (or old free trial) ends. */
+export function licenceEnd(a: AgentRow): Date {
+  const trial = a.trial_ends_at.getTime();
+  const paid = a.paid_until ? a.paid_until.getTime() : 0;
+  return new Date(Math.max(trial, paid));
+}
+
+/** Last moment of access: licence end + grace period. */
+export function graceEnd(a: AgentRow): Date {
+  return new Date(licenceEnd(a).getTime() + Math.max(0, a.grace_days || 0) * 86400_000);
+}
+
+/** Agent tools work: activated by the site admin, and licence (plus grace period) not over. */
 export function subscriptionActive(a: AgentRow) {
-  const now = Date.now();
-  return a.trial_ends_at.getTime() > now || (a.paid_until !== null && a.paid_until.getTime() > now);
+  return a.status === 'active' && Date.now() <= graceEnd(a).getTime();
 }
 
 // ---- Login rate limit: max 8 failed attempts per IP per 15 minutes -------------------------
@@ -92,6 +103,7 @@ export function recordFailure(ip: string) {
 export function startSessionCleanup() {
   setInterval(() => {
     exec('DELETE FROM sessions WHERE expires_at < now()').catch((e) => console.warn('session cleanup:', e.message));
+    exec('DELETE FROM admin_sessions WHERE expires_at < now()').catch(() => {});
     // Passport details are kept only as long as the agent chose (default 30 days).
     exec('DELETE FROM passengers WHERE delete_after < now()').catch((e) => console.warn('passenger cleanup:', e.message));
   }, 3600_000).unref();

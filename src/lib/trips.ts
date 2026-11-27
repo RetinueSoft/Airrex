@@ -1,37 +1,30 @@
-// "My trips": flights the user clicked through to book. Stored only in this browser.
+// "My trips": flights the agency continued to book on an airline site. Each agency's own, stored on the server
+// (last 50).
 import type { FlightOffer, SearchQuery } from '../../shared/types.ts';
+import { tripsApi } from './agent.tsx';
 
 export interface SavedTrip {
-  id: string;
+  id: number;
   savedAt: string;
   query: SearchQuery;
   offer: FlightOffer;
 }
 
-const KEY = 'airrex.trips.v1';
+// Before this, trips were kept in the browser and shared by everyone using it: remove that old copy.
+try {
+  localStorage.removeItem('airrex.trips.v1');
+} catch {
+  /* ignore */
+}
 
-export function loadTrips(): SavedTrip[] {
-  try {
-    return JSON.parse(localStorage.getItem(KEY) ?? '[]');
-  } catch {
-    return [];
-  }
+export function loadTrips(): Promise<SavedTrip[]> {
+  return tripsApi.list().catch(() => []);
 }
 
 export function saveTrip(query: SearchQuery, offer: FlightOffer) {
-  try {
-    const trips = loadTrips().filter((t) => t.offer.id !== offer.id);
-    trips.unshift({ id: offer.id, savedAt: new Date().toISOString(), query, offer });
-    localStorage.setItem(KEY, JSON.stringify(trips.slice(0, 50)));
-  } catch {
-    /* storage unavailable (private mode) – ignore */
-  }
+  tripsApi.save(query, offer).catch(() => {});
 }
 
-export function removeTrip(id: string) {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(loadTrips().filter((t) => t.id !== id)));
-  } catch {
-    /* ignore */
-  }
+export function removeTrip(id: number) {
+  return tripsApi.remove(id).catch(() => {});
 }
