@@ -32,6 +32,7 @@ import { createSerpApiProvider, SerpApiError } from './providers/serpapi.ts';
 import type { FlightProvider } from './providers/types.ts';
 import { createCache } from './cache.ts';
 import { handleAgentApi } from './agentApi.ts';
+import { handleReportsApi } from './reportsApi.ts';
 import { migrate } from './db.ts';
 import { startSessionCleanup } from './auth.ts';
 
@@ -230,6 +231,7 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
   try {
     if (await handleAgentApi(req, res, url)) return;
+    if (await handleReportsApi(req, res, url)) return;
 
     if (url.pathname === '/api/airports') {
       const q = (url.searchParams.get('q') ?? '').trim().toLowerCase();
@@ -268,7 +270,9 @@ const server = createServer(async (req, res) => {
       return json(
         res,
         200,
-        options.map((o) => ({ ...o, perPerson: o.price, price: o.price !== undefined ? o.price * query.adults : undefined })),
+        options
+          .filter((o) => o.isAirline) // airline's own website only (also for links saved before this rule)
+          .map((o) => ({ ...o, perPerson: o.price, price: o.price !== undefined ? o.price * query.adults : undefined })),
       );
     }
 

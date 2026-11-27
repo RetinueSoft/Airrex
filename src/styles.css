@@ -281,8 +281,6 @@ main { flex: 1; width: 100%; }
 .book-option.primary { background: var(--primary-c); border-color: var(--primary-c); color: #fff; }
 .book-option.primary .muted { color: #dee3ff; }
 .option-bags { display: block; font-size: 12px; font-weight: 500; opacity: .85; margin-top: 2px; }
-.other-sellers { font-size: 14px; }
-.other-sellers summary { cursor: pointer; color: var(--text-2); }
 .modal-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 
 /* Simple forms (cheapest-dates page) */
@@ -563,4 +561,45 @@ main { flex: 1; width: 100%; }
   /* max-height stops a 1px rounding overflow from spilling onto an extra blank sheet. */
   #print-area img { display: block; width: 100%; height: auto; max-height: 100vh; object-fit: contain; margin: 0 auto; page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid; }
   #print-area img:last-child { page-break-after: auto; break-after: auto; }
+}
+
+/* ---------- Passenger details (passport scan + copy card) ---------- */
+.trip-pax, .trip-report { border-top: 1px solid var(--line-soft); margin-top: 12px; padding-top: 12px; }
+.trip-pax > summary, .trip-report > summary { cursor: pointer; font-weight: 700; display: flex; align-items: center; gap: 6px; list-style: none; }
+.trip-pax > summary::-webkit-details-marker, .trip-report > summary::-webkit-details-marker { display: none; }
+.trip-pax > summary::after, .trip-report > summary::after { content: '▾'; margin-left: auto; color: var(--text-2); }
+.trip-pax[open] > summary::after, .trip-report[open] > summary::after { content: '▴'; }
+.trip-pax > * + *, .trip-report > * + * { margin-top: 10px; }
+.pax-item { display: grid; gap: 4px; justify-items: start; }
+.pax-card { width: 100%; background: var(--low); border: 1px solid var(--line-soft); border-radius: var(--radius); padding: 12px; display: grid; gap: 2px; }
+.pax-card h3 { font-size: 15px; margin-bottom: 6px; }
+.pax-row { display: grid; grid-template-columns: minmax(110px, 38%) 1fr auto; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px dashed var(--line-soft); }
+.pax-row:last-of-type { border-bottom: 0; }
+.pax-label { font-size: 12px; color: var(--text-2); font-weight: 600; }
+.pax-value { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
+.pax-value b.mono { font-size: 14px; }
+.pax-copy { padding: 6px 10px; font-size: 12px; }
+.pax-form { display: grid; gap: 10px; }
+.pax-scan { display: grid; gap: 6px; }
+.pax-scan .file-btn { justify-self: start; }
+.pax-scan .file-btn.disabled { opacity: .5; pointer-events: none; }
+.pax-mrz summary { cursor: pointer; font-size: 13px; color: var(--primary); font-weight: 600; }
+.pax-mrz[open] { display: grid; gap: 8px; }
+.pax-mrz textarea { font-family: var(--font-mono); font-size: 12px; }
+.pax-consent { display: grid; gap: 8px; background: var(--low); border-radius: var(--r-md); padding: 10px; }
+.pax-consent .check { align-items: flex-start; font-size: 13px; }
+.pax-consent .check input { margin-top: 2px; }
+.field.compact { max-width: 240px; }
+.pax-add { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.pax-pick { font: inherit; font-size: 14px; padding: 10px 12px; border: 1px solid var(--line-soft); border-radius: var(--r-md); background: var(--low); color: var(--text); max-width: 100%; }
+.fare-report { display: grid; gap: 10px; }
+.trip-wrap { display: grid; gap: 8px; }
+.trip-report-box { background: var(--card); border: 1px solid var(--line-soft); border-radius: var(--radius); padding: 12px; }
+.pax-list { display: grid; gap: 8px; margin-top: 16px; }
+.pax-list-item { background: var(--card); border: 1px solid var(--line-soft); border-radius: var(--radius); padding: 12px; display: grid; gap: 10px; }
+.pax-list-row { display: flex; align-items: center; gap: 8px; }
+.pax-list-name { display: flex; flex-direction: column; align-items: flex-start; background: none; border: 0; padding: 0; font: inherit; color: var(--text); text-align: left; cursor: pointer; min-width: 0; }
+@media (max-width: 480px) {
+  .pax-row { grid-template-columns: 1fr auto; }
+  .pax-label { grid-column: 1 / -1; }
 }

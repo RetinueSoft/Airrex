@@ -92,5 +92,7 @@ export function recordFailure(ip: string) {
 export function startSessionCleanup() {
   setInterval(() => {
     exec('DELETE FROM sessions WHERE expires_at < now()').catch((e) => console.warn('session cleanup:', e.message));
+    // Passport details are kept only as long as the agent chose (default 30 days).
+    exec('DELETE FROM passengers WHERE delete_after < now()').catch((e) => console.warn('passenger cleanup:', e.message));
   }, 3600_000).unref();
 }

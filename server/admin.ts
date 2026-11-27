@@ -4,6 +4,7 @@
 //   npm run admin -- expire <email>             end trial/subscription now
 //   npm run admin -- delete <email>             remove the agent and their saved quotes
 //   npm run admin -- reset-password <email>     prints a new temporary password
+//   npm run admin -- reports [days]             "What did you pay?" reports (default last 30 days)
 // On the server (Docker): app-compose airrex exec app node server/admin.ts list
 
 import { randomBytes } from 'node:crypto';
@@ -75,8 +76,39 @@ async function main() {
       console.log(`Temporary password for ${a.email}: ${temp}\nAsk them to change it in Agent → Account.`);
       break;
     }
+    case 'reports': {
+      const days = Math.max(1, Number(email) || 30);
+      type Row = {
+        airline_code: string; n: number; avg_diff_pp: number; bag_reports: number; avg_bag_cost: number | null; avg_fee: number | null;
+      };
+      const summary = await many<Row>(
+        `SELECT airline_code, count(*)::int AS n,
+                round(avg((paid_total - shown_total)::numeric / adults))::int AS avg_diff_pp,
+                count(bag_cost)::int AS bag_reports,
+                round(avg(bag_cost))::int AS avg_bag_cost,
+                round(avg(airline_fee))::int AS avg_fee
+         FROM fare_reports WHERE created_at > now() - make_interval(days => $1)
+         GROUP BY airline_code ORDER BY n DESC`,
+        [days],
+      );
+      console.log(`Fare reports, last ${days} days (per airline):`);
+      console.table(summary.map((r) => ({
+        airline: r.airline_code, reports: r.n, 'paid − shown per person (avg ₹)': r.avg_diff_pp,
+        'bag reports': r.bag_reports, 'avg bag cost ₹': r.avg_bag_cost ?? '-', 'avg airline fee ₹': r.avg_fee ?? '-',
+      })));
+      const latest = await many<Record<string, unknown>>(
+        `SELECT to_char(created_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD') AS reported, origin || '-' || destination AS route, travel_date::text AS date, adults,
+                airline_code AS airline, flight_numbers AS flights, shown_total AS shown, paid_total AS paid, fare_type,
+                bag_kg, bag_cost, airline_fee, other_fees, notes
+         FROM fare_reports WHERE created_at > now() - make_interval(days => $1) ORDER BY created_at DESC LIMIT 25`,
+        [days],
+      );
+      console.log('Latest 25:');
+      console.table(latest);
+      break;
+    }
     default:
-      console.log('Commands: list | extend <email> <days> | expire <email> | delete <email> | reset-password <email>');
+      console.log('Commands: list | extend <email> <days> | expire <email> | delete <email> | reset-password <email> | reports [days]');
   }
 }
 

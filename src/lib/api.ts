@@ -1,4 +1,4 @@
-import type { BookingOption, CalendarResponse, SearchQuery, SearchResponse } from '../../shared/types.ts';
+import type { BookingOption, CalendarResponse, SearchQuery, SearchResponse, FareReportInput } from '../../shared/types.ts';
 
 /** Cheapest known 1-adult price per day. Uses no paid searches. */
 export async function fetchCalendar(
@@ -72,4 +72,17 @@ export function openBookingOption(opt: BookingOption) {
   form.submit();
   form.remove();
   return true;
+}
+
+/** Send a "what did you pay?" report after booking. */
+export async function sendFareReport(report: FareReportInput): Promise<void> {
+  const res = await fetch('/api/fare-reports', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(report),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error ?? `Could not send (${res.status})`);
+  }
 }

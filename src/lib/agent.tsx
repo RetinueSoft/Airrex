@@ -1,7 +1,7 @@
 // Logged-in travel agent, shared across the app.
 
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
-import type { AgentProfile, SavedQuote } from '../../shared/types.ts';
+import type { AgentProfile, SavedQuote, PassengerDetails, SavedPassenger } from '../../shared/types.ts';
 
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`/api/agent/${path}`, {
@@ -81,6 +81,13 @@ export const quotesApi = {
   save: (q: Omit<SavedQuote, 'id' | 'createdAt' | 'updatedAt'>) => call<{ id: number }>('POST', 'quotes', q),
   update: (id: number, q: Omit<SavedQuote, 'id' | 'createdAt' | 'updatedAt'>) => call<{ id: number }>('PUT', `quotes/${id}`, q),
   remove: (id: number) => call('DELETE', `quotes/${id}`),
+};
+
+export const passengersApi = {
+  list: () => call<SavedPassenger[]>('GET', 'passengers'),
+  save: (passenger: PassengerDetails, keepDays: number) =>
+    call<SavedPassenger>('POST', 'passengers', { passenger, keepDays, consent: true }),
+  remove: (id: number) => call('DELETE', `passengers/${id}`),
 };
 
 export function daysLeft(agent: AgentProfile) {

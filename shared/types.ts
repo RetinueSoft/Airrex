@@ -206,3 +206,48 @@ export interface Airport {
   /** Other names people type, e.g. Trichy, Bangalore. */
   aliases?: string[];
 }
+
+/** Passenger details as needed on an airline's passenger form (from the passport). */
+export interface PassengerDetails {
+  givenNames: string;
+  surname: string;
+  /** M, F or X (as printed on the passport). */
+  sex: 'M' | 'F' | 'X' | '';
+  /** YYYY-MM-DD */
+  dateOfBirth: string;
+  /** 3-letter country code, e.g. IND. */
+  nationality: string;
+  passportNumber: string;
+  /** 3-letter code of the country that issued the passport. */
+  issuingCountry: string;
+  /** YYYY-MM-DD */
+  passportExpiry: string;
+}
+
+/** A passenger an agent saved (stored encrypted, deleted automatically after deleteAfter). */
+export interface SavedPassenger extends PassengerDetails {
+  id: number;
+  createdAt: string;
+  deleteAfter: string;
+}
+
+/** What a traveller or agent reports the airline actually charged, compared with what AirRex showed. */
+export interface FareReportInput {
+  origin: string;
+  destination: string;
+  date: string;
+  adults: number;
+  airlineCode: string;
+  flightNumbers: string;
+  /** Total AirRex showed for the group. */
+  shownTotal: number;
+  /** Total actually paid on the airline site (all passengers, all fees). */
+  paidTotal: number;
+  /** cheapest | with-bag | flexi | other */
+  fareType: string;
+  bagKg?: number;
+  bagCost?: number;
+  airlineFee?: number;
+  otherFees?: number;
+  notes?: string;
+}

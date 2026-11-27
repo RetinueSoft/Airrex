@@ -8,6 +8,7 @@ import Icon from './components/Icon.tsx';
 import AgentLoginPage from './pages/AgentLoginPage.tsx';
 import AgentDashboardPage from './pages/AgentDashboardPage.tsx';
 import QuotesPage from './pages/QuotesPage.tsx';
+import PassengersPage from './pages/PassengersPage.tsx';
 import { useAgent } from './lib/agent.tsx';
 
 // pdf.js is large, so the print tool loads only when opened.
@@ -51,6 +52,7 @@ export default function App() {
           <Route path="/agent" element={<AgentDashboardPage />} />
           <Route path="/agent/quotes" element={<QuotesPage />} />
           <Route path="/agent/quotes/:id" element={<QuotesPage />} />
+          <Route path="/agent/passengers" element={<PassengersPage />} />
           <Route path="/print" element={<Suspense fallback={<p className="page muted">Loading…</p>}><TicketPrintPage /></Suspense>} />
           <Route path="*" element={<SearchPage />} />
         </Routes>

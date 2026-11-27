@@ -150,6 +150,7 @@ export default function AgentDashboardPage() {
         <Link to="/" className="action-tile"><Icon name="travel_explore" size={26} /><b>Search &amp; quote</b><span>Find flights, tap "Add to quote", send on WhatsApp</span></Link>
         <Link to="/print" className="action-tile"><Icon name="confirmation_number" size={26} /><b>Print branded ticket</b><span>Upload e-ticket, auto-hide fare, print with your logo</span></Link>
         <Link to="/agent/quotes" className="action-tile"><Icon name="forum" size={26} /><b>Saved quotes{quotes ? ` (${quotes.length})` : ''}</b><span>View, resend or update quotes you sent to customers</span></Link>
+        <Link to="/agent/passengers" className="action-tile"><Icon name="badge" size={26} /><b>Saved passengers</b><span>Scan passports once, copy details into airline forms</span></Link>
         <Link to="/cheapest-dates" className="action-tile"><Icon name="calendar_month" size={26} /><b>Cheapest dates</b><span>Find the cheapest day for a flexible customer</span></Link>
       </div>
 

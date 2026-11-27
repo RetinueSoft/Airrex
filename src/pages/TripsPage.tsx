@@ -9,6 +9,7 @@ import { quotesApi, useAgent } from '../lib/agent.tsx';
 import { QuoteBrowser } from './QuotesPage.tsx';
 import QuoteTray from '../components/QuoteTray.tsx';
 import Icon from '../components/Icon.tsx';
+import FareReport from '../components/FareReport.tsx';
 
 function TripList({ trips, canQuote, onQuote, onRemove }: {
   trips: SavedTrip[];
@@ -24,6 +25,17 @@ function TripList({ trips, canQuote, onQuote, onRemove }: {
     );
   }
   const today = todayYmd();
+  return <TripRows trips={trips} canQuote={canQuote} onQuote={onQuote} onRemove={onRemove} today={today} />;
+}
+
+function TripRows({ trips, canQuote, onQuote, onRemove, today }: {
+  trips: SavedTrip[];
+  canQuote: boolean;
+  onQuote: (t: SavedTrip) => void;
+  onRemove: (id: string) => void;
+  today: string;
+}) {
+  const [reporting, setReporting] = useState<string | null>(null);
   return (
     <div className="trip-list">
       {trips.map((t) => {
@@ -32,7 +44,8 @@ function TripList({ trips, canQuote, onQuote, onRemove }: {
         const last = t.offer.segments[t.offer.segments.length - 1];
         const past = t.query.date < today;
         return (
-          <div key={t.id} className="trip">
+          <div key={t.id} className="trip-wrap">
+          <div className="trip">
             <AirlineBadge code={t.offer.airlineCode} name={a.name} logo={t.offer.airlineLogo} />
             <div className="grow">
               <b>{first.origin} → {last.destination}</b> · {prettyDate(t.query.date)} · {time(first.departAt)}–{time(last.arriveAt)}
@@ -50,8 +63,15 @@ function TripList({ trips, canQuote, onQuote, onRemove }: {
               )}
               <a className="btn" href={t.offer.bookingUrl ?? a.bookingUrl} target="_blank" rel="noopener noreferrer">Open {a.name} ↗</a>
               <Link className="btn primary" to="/print">Print ticket</Link>
+              <button className="link-btn" onClick={() => setReporting(reporting === t.id ? null : t.id)}>What did you pay?</button>
               <button className="link-btn" onClick={() => onRemove(t.id)}>Remove</button>
             </div>
+          </div>
+          {reporting === t.id && (
+            <div className="trip-report-box">
+              <FareReport offer={t.offer} query={t.query} />
+            </div>
+          )}
           </div>
         );
       })}

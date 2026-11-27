@@ -63,7 +63,7 @@ With no configuration, the API returns **demo fares**. These are deterministic, 
 
 How searches are used:
 - **One search per new route + date** (always Economy, always searched for 1 adult). For 2+ adults the app multiplies the 1-adult fare, so the group size doesn't use extra searches. Group totals are marked as estimates, because an airline can charge more when few seats are left at the cheapest fare. Results are reused for `SEARCH_CACHE_MINUTES` (default 720 = 12 hours) and saved in `.cache/`, so restarts don't use searches again. The results page shows "Prices checked X min ago".
-- **Opening the booking pop-up is free.** It shows links already saved for that flight, otherwise "Continue to <airline>" (the airline's website). Only when the user clicks **Get the direct link for this flight** does the app spend one search to fetch where the flight is sold (the airline's own website first, then other sites like OTAs). Those links are saved for 3 hours.
+- **Opening the booking pop-up is free.** It shows links already saved for that flight, otherwise "Continue to <airline>" (the airline's website). Only when the user clicks **Get the direct link for this flight** does the app spend one search to fetch the link to this flight on the airline's own website. Other booking sites (OTAs) are never shown: AirRex only sends people to the airline. Those links are saved for 3 hours.
 - When the quota runs out, users see "Live prices are temporarily unavailable". Set `FALLBACK_TO_DEMO=true` to show labelled demo fares instead (useful in development).
 
 Google Flights gives one total price including taxes, with no base/tax split, so the fare details show only "You pay".
@@ -97,7 +97,23 @@ Travel agents sign up at **/agent/login** and get a free trial (`AGENT_TRIAL_DAY
 - **Branded ticket printing.** The print page adds the agency header (logo, name, address, phone, GSTIN) and footer to every printed page.
 - **Auto-hide fares.** On PDF e-tickets this finds price amounts (₹/INR/Rs, and numbers on Fare/Tax/Total/Fee lines) and covers them. Times, baggage weights and terminals are left alone. Agents should still check the result. It doesn't work on photos or scans.
 
+- **Saved passengers** (Agent → Saved passengers). Scan a customer's passport once, with their permission, and pick
+  them when booking. Details are encrypted on the server (AES-256-GCM, key in `PASSENGER_DATA_KEY`), visible only to
+  that agent, and deleted automatically after 7/30/90/365 days (default 30).
+
 When a plan ends, quotes and branding pause, but saved quotes can still be viewed.
+
+### Passenger details and "What did you pay?" (everyone)
+
+- **Passenger details for the airline form.** In the booking pop-up, travellers scan the passport photo page (or paste
+  the two `P<IND…` lines, or type the details). The two-line passport code is read **in the browser**
+  (`src/lib/passportScan.ts` with tesseract.js, checked by `shared/mrz.ts`); the photo is never uploaded. AirRex then
+  shows every field the airline asks for, each with a **Copy** button, and warns if the passport expires within
+  6 months of travel. Travellers' details stay in that browser tab only.
+- **What did you pay?** After clicking through to the airline (pop-up, or later from **My trips**), people can report
+  the final total, fare type, bag cost and fees. Reports are saved in `fare_reports` (no personal data) and shown with
+  `npm run admin -- reports [days]`: per airline, how far the real price was from AirRex's, average bag cost and fees.
+  Use them to update `shared/airlineFees.ts` and `shared/baggagePolicy.ts`.
 
 **Taking payment / renewals (manual for now).** When an agent pays you (UPI, bank transfer), extend their plan:
 

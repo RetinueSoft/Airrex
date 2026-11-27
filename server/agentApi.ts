@@ -13,7 +13,8 @@
 // cross-site form posts (CSRF).
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { exec, migrate, one, many, tx, type AgentRow, type QuoteRow } from './db.ts';
+import { exec, migrate, one, many, tx, type AgentRow, type PassengerRow, type QuoteRow } from './db.ts';
+import { decryptJson, encryptJson, passengerStorageEnabled } from './crypto.ts';
 import {
   clientIp,
   createSession,
@@ -26,7 +27,7 @@ import {
   TRIAL_DAYS,
   verifyPassword,
 } from './auth.ts';
-import type { AgentProfile, SavedQuote } from '../shared/types.ts';
+import type { AgentProfile, PassengerDetails, SavedPassenger, SavedQuote } from '../shared/types.ts';
 
 /** Quotes kept per agency. Saving a new quote removes the oldest beyond this. */
 export const MAX_QUOTES = Math.max(1, Number(process.env.MAX_QUOTES_PER_AGENT ?? 20));
@@ -138,6 +139,47 @@ function quoteFields(body: Record<string, unknown>) {
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+const MAX_PASSENGERS = 200;
+const YMD = /^\d{4}-\d{2}-\d{2}$/;
+
+function passengerFields(v: unknown): PassengerDetails {
+  if (typeof v !== 'object' || v === null) throw new HttpError(400, 'Passenger details missing');
+  const b = v as Record<string, unknown>;
+  const upper = (x: unknown, max: number, field: string) => str(x, max, field).toUpperCase();
+  const date = (x: unknown, field: string) => {
+    const s = str(x, 10, field);
+    if (s && !YMD.test(s)) throw new HttpError(400, `${field} must be a date`);
+    return s;
+  };
+  const sex = str(b.sex, 1, 'Gender').toUpperCase();
+  const p: PassengerDetails = {
+    givenNames: upper(b.givenNames, 60, 'Given names'),
+    surname: upper(b.surname, 60, 'Surname'),
+    sex: sex === 'M' || sex === 'F' || sex === 'X' ? sex : '',
+    dateOfBirth: date(b.dateOfBirth, 'Date of birth'),
+    nationality: upper(b.nationality, 3, 'Nationality'),
+    passportNumber: upper(b.passportNumber, 12, 'Passport number').replace(/\s/g, ''),
+    issuingCountry: upper(b.issuingCountry, 3, 'Issuing country'),
+    passportExpiry: date(b.passportExpiry, 'Passport expiry'),
+  };
+  if (!p.givenNames && !p.surname) throw new HttpError(400, 'Enter the passenger name');
+  if (p.passportNumber && !/^[A-Z0-9]{5,12}$/.test(p.passportNumber)) throw new HttpError(400, 'Passport number looks wrong');
+  return p;
+}
+
+function toPassenger(r: PassengerRow): SavedPassenger {
+  return {
+    ...decryptJson<PassengerDetails>(r.data_enc),
+    id: r.id,
+    createdAt: r.created_at.toISOString(),
+    deleteAfter: r.delete_after.toISOString(),
+  };
+}
+
+function requirePassengerStorage() {
+  if (!passengerStorageEnabled) throw new HttpError(503, 'Saving passengers is not set up on this server yet (PASSENGER_DATA_KEY).');
+}
 
 async function requireAgent(req: IncomingMessage) {
   const a = await currentAgent(req);
@@ -334,6 +376,54 @@ export async function handleAgentApi(req: IncomingMessage, res: ServerResponse, 
         const a = await requireAgent(req);
         const id = Number(url.pathname.split('/').pop());
         await exec('DELETE FROM quotes WHERE id = $1 AND agent_id = $2', [id, a.id]);
+        send(res, 200, { ok: true });
+        return true;
+      }
+
+      case 'GET /api/agent/passengers': {
+        const a = await requireAgent(req);
+        requirePassengerStorage();
+        const rows = await many<PassengerRow>(
+          'SELECT * FROM passengers WHERE agent_id = $1 AND delete_after > now() ORDER BY created_at DESC, id DESC',
+          [a.id],
+        );
+        const list: SavedPassenger[] = [];
+        for (const r of rows) {
+          try {
+            list.push(toPassenger(r));
+          } catch {
+            /* encrypted with a different key: skip */
+          }
+        }
+        send(res, 200, list);
+        return true;
+      }
+
+      case 'POST /api/agent/passengers': {
+        const a = await requireAgent(req);
+        requireActive(a);
+        requirePassengerStorage();
+        const body = await readJson(req);
+        if (body.consent !== true) throw new HttpError(400, "Confirm you have the passenger's permission to save their passport details");
+        const p = passengerFields(body.passenger);
+        const keepDays = Math.min(365, Math.max(1, Math.round(Number(body.keepDays) || 30)));
+        const row = await tx(async (c) => {
+          const count = await c.query<{ n: string }>('SELECT count(*) AS n FROM passengers WHERE agent_id = $1 AND delete_after > now()', [a.id]);
+          if (Number(count.rows[0].n) >= MAX_PASSENGERS) throw new HttpError(409, `You can save up to ${MAX_PASSENGERS} passengers. Delete some first.`);
+          const ins = await c.query<PassengerRow>(
+            `INSERT INTO passengers (agent_id, data_enc, delete_after) VALUES ($1, $2, now() + make_interval(days => $3)) RETURNING *`,
+            [a.id, encryptJson(p), keepDays],
+          );
+          return ins.rows[0];
+        });
+        send(res, 201, toPassenger(row));
+        return true;
+      }
+
+      case 'DELETE /api/agent/passengers/:id': {
+        const a = await requireAgent(req);
+        const id = Number(url.pathname.split('/').pop());
+        await exec('DELETE FROM passengers WHERE id = $1 AND agent_id = $2', [id, a.id]);
         send(res, 200, { ok: true });
         return true;
       }

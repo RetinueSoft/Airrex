@@ -7,6 +7,8 @@ import { CABIN_LABEL, money, prettyDate, time } from '../lib/format.ts';
 import { saveTrip } from '../lib/trips.ts';
 import { fetchBookingOptions, openBookingOption } from '../lib/api.ts';
 import { baggageSummary } from '../../shared/baggage.ts';
+import TripPassengers from './TripPassengers.tsx';
+import FareReport from './FareReport.tsx';
 
 export default function BookingModal({ offer, query, onClose }: { offer: FlightOffer; query: SearchQuery; onClose: () => void }) {
   const airline = airlineInfo(offer.airlineCode, offer.airlineName);
@@ -89,8 +91,8 @@ export default function BookingModal({ offer, query, onClose }: { offer: FlightO
     return money(o.price, o.currency);
   }
 
+  // AirRex sends people to the airline's own website only, never to other booking sites.
   const airlineOptions = options?.filter((o) => o.isAirline && o.url) ?? [];
-  const otherOptions = options?.filter((o) => !o.isAirline && o.url) ?? [];
   const loadingOptions = fetching || !checkedCache;
   const canFindLinks = !!offer.bookingToken && options === null && checkedCache && !fetching;
 
@@ -117,7 +119,7 @@ export default function BookingModal({ offer, query, onClose }: { offer: FlightO
           <button className="book-option" onClick={findLinks}>
             <span>
               <b>Get the direct link for this flight</b>
-              <span className="muted"> · opens {airline.name} with this flight, and shows other sites selling it</span>
+              <span className="muted"> · opens this flight on {airline.name}'s own website</span>
             </span>
             <span>→</span>
           </button>
@@ -138,23 +140,6 @@ export default function BookingModal({ offer, query, onClose }: { offer: FlightO
           </div>
         )}
 
-        {otherOptions.length > 0 && (
-          <details className="other-sellers">
-            <summary>Also sold by {otherOptions.length} other site{otherOptions.length > 1 ? 's' : ''}</summary>
-            <div className="book-options">
-              {otherOptions.map((o, i) => (
-                <button key={i} className="book-option" onClick={() => book(o)}>
-                  <span>
-                    {o.bookWith}{o.optionTitle && <span className="muted"> · {o.optionTitle}</span>}
-                    {o.baggage && <span className="option-bags">{baggageSummary(o.baggage).label}</span>}
-                  </span>
-                  <span>{priceLabel(o)} ↗</span>
-                </button>
-              ))}
-            </div>
-          </details>
-        )}
-
         {!loadingOptions && airlineOptions.length === 0 && (
           <p className="hint">
             {optionsError ? 'A direct link for this flight isn\'t available right now. ' : ''}
@@ -169,11 +154,19 @@ export default function BookingModal({ offer, query, onClose }: { offer: FlightO
             {airlineOptions.length ? `${airline.name} homepage ↗` : `Continue to ${airline.name} ↗`}
           </button>
         </div>
+        <TripPassengers query={query} />
+
         {opened && (
-          <p className="hint ok">
-            Saved to <Link to="/trips">My trips</Link>. After booking, download your e-ticket and use{' '}
-            <Link to="/print">Print ticket</Link> to hide details and print it.
-          </p>
+          <>
+            <p className="hint ok">
+              Saved to <Link to="/trips">My trips</Link>. After booking, download your e-ticket and use{' '}
+              <Link to="/print">Print ticket</Link> to hide details and print it.
+            </p>
+            <details className="trip-report">
+              <summary>Booked? Tell us what {airline.name} charged</summary>
+              <FareReport offer={offer} query={query} />
+            </details>
+          </>
         )}
       </div>
     </div>

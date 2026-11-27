@@ -156,8 +156,8 @@ export function createSerpApiProvider(apiKey: string): FlightProvider & {
           phone: part.booking_phone,
         });
       }
-      // Airline's own website first, then cheapest.
-      return options.sort((a, b) => Number(b.isAirline) - Number(a.isAirline) || (a.price ?? Infinity) - (b.price ?? Infinity));
+      // AirRex only sends people to the airline's own website: other booking sites (OTAs) are dropped.
+      return options.filter((o) => o.isAirline).sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity));
     },
   };
 }
