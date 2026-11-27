@@ -1,0 +1,38 @@
+{
+  "name": "airrex",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "AirRex - compare flight fares across airlines and book on the airline's own website.",
+  "scripts": {
+    "dev": "concurrently -n api,web -c cyan,magenta \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "node --env-file-if-exists=.env --watch server/index.ts --dev",
+    "dev:web": "vite",
+    "build": "tsc --noEmit && vite build",
+    "start": "node --env-file-if-exists=.env server/index.ts",
+    "typecheck": "tsc --noEmit",
+    "admin": "node --env-file-if-exists=.env server/admin.ts"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "dependencies": {
+    "@fontsource/instrument-sans": "^5.3.0",
+    "@fontsource/mulish": "^5.3.0",
+    "@fontsource/spline-sans-mono": "^5.3.0",
+    "material-symbols": "^0.49.0",
+    "pdfjs-dist": "^6.5.438",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-router-dom": "^7.18.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.11",
+    "@types/react": "^19.3.3",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "concurrently": "^10.0.7",
+    "typescript": "^7.0.2",
+    "vite": "^8.4.0"
+  }
+}

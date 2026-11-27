@@ -1,0 +1,68 @@
+import type { BookingOption, CalendarResponse, SearchQuery, SearchResponse } from '../../shared/types.ts';
+
+/** Cheapest known 1-adult price per day. Uses no paid searches. */
+export async function fetchCalendar(
+  origin: string,
+  destination: string,
+  from: string,
+  to: string,
+  signal?: AbortSignal,
+): Promise<CalendarResponse> {
+  const res = await fetch(`/api/calendar?${new URLSearchParams({ origin, destination, from, to })}`, { signal });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error ?? `Could not load prices (${res.status})`);
+  return body as CalendarResponse;
+}
+
+function queryParams(q: SearchQuery) {
+  return new URLSearchParams({
+    origin: q.origin,
+    destination: q.destination,
+    date: q.date,
+    adults: String(q.adults),
+  });
+}
+
+export async function searchFlights(q: SearchQuery, signal?: AbortSignal): Promise<SearchResponse> {
+  const res = await fetch(`/api/search?${queryParams(q)}`, { signal });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error ?? `Search failed (${res.status})`);
+  return body as SearchResponse;
+}
+
+export async function fetchBookingOptions(token: string, q: SearchQuery, signal?: AbortSignal): Promise<BookingOption[]> {
+  const params = queryParams(q);
+  params.set('token', token);
+  const res = await fetch(`/api/booking-options?${params}`, { signal });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error ?? `Could not load booking links (${res.status})`);
+  return body as BookingOption[];
+}
+
+/**
+ * Open a booking link in a new tab. Google's booking redirect must be opened with an HTTP POST
+ * carrying post_data, so we submit a hidden form instead of using a plain link.
+ */
+export function openBookingOption(opt: BookingOption) {
+  if (!opt.url || !/^https:\/\//i.test(opt.url)) return false;
+  if (!opt.postData) {
+    window.open(opt.url, '_blank', 'noopener');
+    return true;
+  }
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = opt.url;
+  form.target = '_blank';
+  form.rel = 'noopener';
+  for (const [name, value] of new URLSearchParams(opt.postData)) {
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = name;
+    input.value = value;
+    form.appendChild(input);
+  }
+  document.body.appendChild(form);
+  form.submit();
+  form.remove();
+  return true;
+}

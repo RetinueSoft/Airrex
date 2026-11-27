@@ -1,0 +1,154 @@
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import type { BookingOption, FlightOffer, SearchQuery } from '../../shared/types.ts';
+import { airlineInfo } from '../../shared/airlines.ts';
+import { findAirport } from '../../shared/airports.ts';
+import { CABIN_LABEL, money, prettyDate, time } from '../lib/format.ts';
+import { saveTrip } from '../lib/trips.ts';
+import { fetchBookingOptions, openBookingOption } from '../lib/api.ts';
+import { baggageSummary } from '../../shared/baggage.ts';
+
+export default function BookingModal({ offer, query, onClose }: { offer: FlightOffer; query: SearchQuery; onClose: () => void }) {
+  const airline = airlineInfo(offer.airlineCode, offer.airlineName);
+  const [copied, setCopied] = useState(false);
+  const [opened, setOpened] = useState(false);
+  const [options, setOptions] = useState<BookingOption[] | null>(null);
+  const [optionsError, setOptionsError] = useState('');
+  const first = offer.segments[0];
+  const last = offer.segments[offer.segments.length - 1];
+  const fallbackUrl = offer.bookingUrl ?? airline.bookingUrl;
+
+  const summary = [
+    `${findAirport(query.origin)?.city ?? query.origin} (${query.origin}) → ${findAirport(query.destination)?.city ?? query.destination} (${query.destination})`,
+    `${prettyDate(query.date)} · ${offer.segments.map((s) => s.flightNumber).join(' + ')} · dep ${time(first.departAt)} arr ${time(last.arriveAt)}`,
+    `${query.adults} adult${query.adults > 1 ? 's' : ''} · ${CABIN_LABEL[query.cabin]} · ${money(offer.fare.total, offer.fare.currency)}` +
+      (query.adults > 1 && offer.fare.perPerson !== undefined ? ` (${money(offer.fare.perPerson, offer.fare.currency)} each, est.)` : ''),
+  ].join('\n');
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  // Live booking links (where to buy this exact flight). Each uncached load uses one SerpApi search.
+  useEffect(() => {
+    if (!offer.bookingToken) return;
+    const ctrl = new AbortController();
+    fetchBookingOptions(offer.bookingToken, query, ctrl.signal)
+      .then(setOptions)
+      .catch((e) => {
+        if (e.name !== 'AbortError') setOptionsError(e.message);
+      });
+    return () => ctrl.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offer.bookingToken]);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(summary);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  function markOpened() {
+    saveTrip(query, offer);
+    setOpened(true);
+  }
+
+  function goToAirlineHome() {
+    markOpened();
+    window.open(fallbackUrl, '_blank', 'noopener');
+  }
+
+  function book(opt: BookingOption) {
+    if (openBookingOption(opt)) markOpened();
+  }
+
+  function priceLabel(o: BookingOption) {
+    if (o.price === undefined) return '';
+    if (query.adults > 1 && o.perPerson !== undefined) return `${money(o.price, o.currency)} (${money(o.perPerson, o.currency)} each)`;
+    return money(o.price, o.currency);
+  }
+
+  const airlineOptions = options?.filter((o) => o.isAirline && o.url) ?? [];
+  const otherOptions = options?.filter((o) => !o.isAirline && o.url) ?? [];
+  const loadingOptions = !!offer.bookingToken && options === null && !optionsError;
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" role="dialog" aria-modal="true" aria-labelledby="book-title" onClick={(e) => e.stopPropagation()}>
+        <button className="modal-close" onClick={onClose} aria-label="Close">×</button>
+        <h2 id="book-title">Book on {airline.name}</h2>
+        <p className="muted">
+          You'll complete booking and payment on the airline's website. AirRex never sees your payment details.
+        </p>
+        <pre className="trip-summary">{summary}</pre>
+
+        {query.adults > 1 && (
+          <p className="hint warn">
+            Select <b>{query.adults} adults</b> on the airline's website. The link opens with 1 passenger, and prices here
+            are estimated as the 1-adult fare × {query.adults}.
+          </p>
+        )}
+
+        {loadingOptions && <p className="muted">Finding the booking link for this flight…</p>}
+
+        {airlineOptions.length > 0 && (
+          <div className="book-options">
+            {airlineOptions.map((o, i) => (
+              <button key={i} className="book-option primary" onClick={() => book(o)}>
+                <span>
+                  <b>Book on {o.bookWith}</b>
+                  {o.optionTitle && <span className="muted"> · {o.optionTitle}</span>}
+                  {o.baggage && <span className="option-bags">{baggageSummary(o.baggage).label}</span>}
+                </span>
+                <span>{priceLabel(o)} ↗</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {otherOptions.length > 0 && (
+          <details className="other-sellers">
+            <summary>Also sold by {otherOptions.length} other site{otherOptions.length > 1 ? 's' : ''}</summary>
+            <div className="book-options">
+              {otherOptions.map((o, i) => (
+                <button key={i} className="book-option" onClick={() => book(o)}>
+                  <span>
+                    {o.bookWith}{o.optionTitle && <span className="muted"> · {o.optionTitle}</span>}
+                    {o.baggage && <span className="option-bags">{baggageSummary(o.baggage).label}</span>}
+                  </span>
+                  <span>{priceLabel(o)} ↗</span>
+                </button>
+              ))}
+            </div>
+          </details>
+        )}
+
+        {!loadingOptions && airlineOptions.length === 0 && (
+          <p className="hint">
+            {optionsError ? 'A direct link for this flight isn\'t available right now. ' : ''}
+            On the airline site, search the same route and date and pick flight{' '}
+            <b>{offer.segments.map((s) => s.flightNumber).join(' + ')}</b>. The airline's price is final and may differ slightly.
+          </p>
+        )}
+
+        <div className="modal-actions">
+          <button className="btn" onClick={copy}>{copied ? 'Copied ✓' : 'Copy flight details'}</button>
+          <button className={`btn ${airlineOptions.length ? '' : 'primary'}`} onClick={goToAirlineHome}>
+            {airlineOptions.length ? `${airline.name} homepage ↗` : `Continue to ${airline.name} ↗`}
+          </button>
+        </div>
+        {opened && (
+          <p className="hint ok">
+            Saved to <Link to="/trips">My trips</Link>. After booking, download your e-ticket and use{' '}
+            <Link to="/print">Print ticket</Link> to hide details and print it.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
