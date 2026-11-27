@@ -83,20 +83,22 @@ export default function FlightCard({
           ))}
           <BaggageChip baggage={offer.baggage} />
         </div>
-        {offer.seatsLeft ? (
-          <span className="card-note danger">Only {offer.seatsLeft} left</span>
-        ) : (
-          <span className="card-note">{offer.stops ? `${offer.stops} stop layover` : departurePeriod(first.departAt)}</span>
-        )}
+        {offer.seatsLeft ? <span className="card-note danger">Only {offer.seatsLeft} left</span> : null}
       </div>
 
       <div className="flight-main">
-        <div className="airline">
-          <AirlineBadge code={offer.airlineCode} name={offer.airlineName} logo={offer.airlineLogo} />
-          <div className="airline-text">
-            <h3 className="airline-name">{airlineDisplayName(offer)}</h3>
-            <p className="mono muted">{offer.segments.map((s) => s.flightNumber).join(', ')}</p>
+        {/* Left: airline, then the departure note. Centre: times and route. Right: price. */}
+        <div className="flight-info">
+          <div className="airline">
+            <AirlineBadge code={offer.airlineCode} name={offer.airlineName} logo={offer.airlineLogo} />
+            <div className="airline-text">
+              <h3 className="airline-name">{airlineDisplayName(offer)}</h3>
+              <p className="mono muted">{offer.segments.map((s) => s.flightNumber).join(', ')}</p>
+            </div>
           </div>
+          <p className="card-note departure-note">
+            {offer.stops ? `${offer.stops} stop layover` : departurePeriod(first.departAt)}
+          </p>
         </div>
 
         <div className="timeline">
@@ -158,23 +160,26 @@ export default function FlightCard({
               {cp && cp.agency > 0 && ` + ${money(cp.agency, offer.fare.currency)} service charge`}
             </p>
           </div>
-          <div className="price-actions">
-            {onToggleQuote && (
-              <button
-                className={`btn quote-btn ${inQuote ? 'active' : ''}`}
-                aria-pressed={inQuote}
-                onClick={(e) => { e.stopPropagation(); onToggleQuote(); }}
-              >
-                <Icon name={inQuote ? 'check_circle' : 'add_circle'} /> {inQuote ? 'In quote' : 'Add to quote'}
-              </button>
-            )}
-            <button className={`btn ${onToggleQuote ? '' : 'primary'} book-btn`} onClick={(e) => { e.stopPropagation(); onBook(); }}>
-              Book on {airline.name}
+        </div>
+      </div>
+      {/* Bottom bar: details on the left, quote and book on the right. */}
+      <div className="card-actions">
+        <button className="link-btn" onClick={(e) => { e.stopPropagation(); onDetails(); }}>
+          Flight &amp; fare details <Icon name="chevron_right" size={16} />
+        </button>
+        <div className="card-actions-main">
+          {onToggleQuote && (
+            <button
+              className={`btn quote-btn ${inQuote ? 'active' : ''}`}
+              aria-pressed={inQuote}
+              onClick={(e) => { e.stopPropagation(); onToggleQuote(); }}
+            >
+              <Icon name={inQuote ? 'check_circle' : 'add_circle'} /> {inQuote ? 'In quote' : 'Add to quote'}
             </button>
-            <button className="link-btn" onClick={(e) => { e.stopPropagation(); onDetails(); }}>
-              Flight &amp; fare details <Icon name="chevron_right" size={16} />
-            </button>
-          </div>
+          )}
+          <button className="btn primary book-btn" onClick={(e) => { e.stopPropagation(); onBook(); }}>
+            Book on {airline.name}
+          </button>
         </div>
       </div>
     </article>

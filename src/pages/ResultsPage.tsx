@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { saveRecentSearch } from '../lib/recentSearches.ts';
 import type { CalendarDay, FlightOffer, SearchQuery, SearchResponse } from '../../shared/types.ts';
 import { airlineInfo } from '../../shared/airlines.ts';
 import { findAirport } from '../../shared/airports.ts';
@@ -36,6 +37,11 @@ export default function ResultsPage() {
     cabin: 'economy', // AirRex searches Economy only
   };
   const queryKey = toSearchParams(query).toString();
+  // Remember the search for "Recent searches" on the search screen.
+  useEffect(() => {
+    saveRecentSearch(query);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queryKey]);
 
   const [data, setData] = useState<SearchResponse | null>(null);
   const [error, setError] = useState('');

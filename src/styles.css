@@ -188,6 +188,7 @@ main { flex: 1; width: 100%; }
 .card-note.danger { color: var(--danger); font-weight: 600; font-variant-numeric: tabular-nums; }
 .flight-main { display: grid; grid-template-columns: minmax(0, 210px) minmax(220px, 1fr) 236px; align-items: center; gap: 24px; }
 @media (max-width: 1279px) { .flight-main { grid-template-columns: minmax(0, 170px) minmax(200px, 1fr) 200px; gap: 16px; } .price-col { padding-left: 16px; } }
+.flight-info { display: grid; gap: 6px; min-width: 0; }
 .airline { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .airline-badge { width: 44px; height: 44px; border-radius: var(--r-md); color: #fff; font-family: var(--font-head); font-weight: 700; font-size: 15px; display: grid; place-items: center; flex: none; }
 .airline-badge.logo { object-fit: contain; background: #fff; border: 1px solid var(--line-soft); padding: 4px; }
@@ -207,7 +208,10 @@ main { flex: 1; width: 100%; }
 .plane { color: var(--primary); transform: rotate(90deg); }
 .nonstop { color: var(--ok); font-size: 12px; font-weight: 600; }
 .stops { color: var(--danger); font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-.price-col { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; border-left: 1px solid rgba(195,197,216,.5); padding-left: 24px; }
+.price-col { display: flex; flex-direction: column; align-items: flex-end; justify-content: center; gap: 8px; border-left: 1px solid rgba(195,197,216,.5); padding-left: 24px; align-self: stretch; }
+.card-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; padding-top: 12px; border-top: 1px solid rgba(195,197,216,.5); flex-wrap: wrap; }
+.card-actions-main { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.card-actions .quote-btn, .card-actions .book-btn { width: auto; }
 .price-block { text-align: right; }
 .price { font-family: var(--font-head); font-size: 24px; line-height: 30px; font-weight: 700; letter-spacing: -.3px; font-variant-numeric: tabular-nums; }
 .price-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; width: 100%; }
@@ -527,9 +531,10 @@ main { flex: 1; width: 100%; }
   .topbar nav a { padding: 8px; font-size: 13px; }
   .flight-card { padding: 16px; }
   .flight-main { grid-template-columns: 1fr; gap: 14px; }
-  .price-col { flex-direction: row; align-items: center; justify-content: space-between; border-left: 0; padding-left: 0; border-top: 1px solid rgba(195,197,216,.5); padding-top: 12px; }
+  .price-col { align-items: flex-start; border-left: 0; padding-left: 0; border-top: 1px solid rgba(195,197,216,.5); padding-top: 12px; }
   .price-block { text-align: left; }
-  .price-actions { width: auto; max-width: 60%; }
+  .card-actions-main { width: 100%; }
+  .card-actions-main .btn { flex: 1; min-width: 0; }
   .sort-tabs { grid-template-columns: repeat(2, 1fr); }
   .route-title { font-size: 20px; line-height: 26px; }
 }
@@ -613,3 +618,14 @@ main { flex: 1; width: 100%; }
 .field .hint-text { text-transform: none; letter-spacing: 0; font-weight: 400; }
 .field .hint-text .link-btn { font-size: 12px; padding: 0; }
 
+
+/* ---------- Recent searches (search screen) ---------- */
+.recent { margin-bottom: 24px; }
+.recent h2 { font-size: 18px; margin-bottom: 10px; }
+.recent-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; }
+.recent-item { display: flex; align-items: center; background: var(--card); border: 1px solid var(--line-soft); border-radius: var(--radius); }
+.recent-item:hover { border-color: var(--primary); }
+.recent-link { display: flex; align-items: center; gap: 10px; padding: 10px 4px 10px 12px; color: var(--text); text-decoration: none; flex: 1; min-width: 0; }
+.recent-link .grow { display: flex; flex-direction: column; min-width: 0; }
+.recent-link b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.recent-remove { padding: 10px; color: var(--text-2); }

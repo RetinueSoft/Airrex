@@ -1,7 +1,10 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { findAirport } from '../../shared/airports.ts';
+import { loadRecentSearches, removeRecentSearch, searchDate, type RecentSearch } from '../lib/recentSearches.ts';
 import SearchForm, { toSearchParams } from '../components/SearchForm.tsx';
 import Icon from '../components/Icon.tsx';
-import { shiftDate, todayYmd } from '../lib/format.ts';
+import { prettyDate, shiftDate, todayYmd } from '../lib/format.ts';
 
 // Popular with travellers from Tamil Nadu.
 const POPULAR = [
@@ -14,6 +17,47 @@ const POPULAR = [
   ['CJB', 'BLR'],
   ['TRZ', 'SHJ'],
 ];
+
+const city = (code: string) => findAirport(code)?.city ?? code;
+
+/** Recent searches: tap one to run it again (a past date moves to today). */
+function RecentSearches() {
+  const [list, setList] = useState<RecentSearch[]>(loadRecentSearches);
+  if (!list.length) return null;
+  const today = todayYmd();
+  return (
+    <section className="recent">
+      <h2>Recent searches</h2>
+      <div className="recent-list">
+        {list.map((s) => (
+          <div key={s.at} className="recent-item">
+            <Link className="recent-link" to={`/results?${toSearchParams({ ...s, date: searchDate(s) })}`}>
+              <Icon name="history" size={20} />
+              <span className="grow">
+                <b>{city(s.origin)} → {city(s.destination)}</b>
+                <span className="muted small-text">
+                  {s.origin} → {s.destination} · {s.date < today ? 'Today (was ' + prettyDate(s.date) + ')' : prettyDate(s.date)} · {s.adults} adult{s.adults > 1 ? 's' : ''}
+                </span>
+              </span>
+              <Icon name="chevron_right" size={20} />
+            </Link>
+            <button
+              type="button"
+              className="link-btn recent-remove"
+              aria-label={`Remove ${s.origin} to ${s.destination} from recent searches`}
+              onClick={() => {
+                removeRecentSearch(s);
+                setList(loadRecentSearches());
+              }}
+            >
+              <Icon name="close" size={16} />
+            </button>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
 
 export default function SearchPage() {
   const date = shiftDate(todayYmd(), 7);
@@ -30,6 +74,7 @@ export default function SearchPage() {
         </div>
       </section>
       <div className="content">
+        <RecentSearches />
         <section className="popular">
           <h2>Popular routes</h2>
           <div className="chips">
