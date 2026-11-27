@@ -4,7 +4,7 @@
 # The server then updates with /root/airrex/update.sh (deploy/update.sh).
 #
 # Web-app settings are fixed at build time. Set them as repository variables (Settings → Secrets and variables →
-# Actions → Variables) if they differ from the defaults: AIRREX_SITE_URL, VITE_AGENT_PLAN_PRICE,
+# Actions → Variables) if they differ from the defaults: AIRREX_SITE_URL (default https://airrex.retinuesoft.com), VITE_AGENT_PLAN_PRICE,
 # VITE_AGENT_TRIAL_DAYS, VITE_SUPPORT_WHATSAPP, VITE_SUPPORT_EMAIL, VITE_MAX_QUOTES_PER_AGENT.
 name: Docker image
 
@@ -63,7 +63,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            AIRREX_SITE_URL=${{ vars.AIRREX_SITE_URL }}
+            AIRREX_SITE_URL=${{ vars.AIRREX_SITE_URL || 'https://airrex.retinuesoft.com' }}
             VITE_AGENT_PLAN_PRICE=${{ vars.VITE_AGENT_PLAN_PRICE }}
             VITE_AGENT_TRIAL_DAYS=${{ vars.VITE_AGENT_TRIAL_DAYS }}
             VITE_SUPPORT_WHATSAPP=${{ vars.VITE_SUPPORT_WHATSAPP }}

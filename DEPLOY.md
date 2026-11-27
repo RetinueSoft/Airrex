@@ -1,8 +1,8 @@
 # Deploying AirRex with Docker
 
 Two containers: `airrex-app` (Node: API + built web app) and `airrex-postgres` (PostgreSQL 18). The server is set up
-by **RetinueSoft/VpsSetup** (`/root/common`): the common Caddy serves it on `https://<server-ip>:8087`
-(`caddy/sites/airrex.caddy`), one GitHub token, the shared `POSTGRES_PASSWORD`, nightly backups to Azure, and the
+by **RetinueSoft/VpsSetup** (`/root/common`): the common Caddy serves it on **https://airrex.retinuesoft.com** and
+`https://<server-ip>:8087` (`caddy/sites/airrex.caddy`), one GitHub token, the shared `POSTGRES_PASSWORD`, nightly backups to Azure, and the
 settings file `/root/common/env/airrex.env`. This repo holds the app and its `deploy/update.sh`.
 
 **How updates flow:** merge a `feature/...` branch into `release` → GitHub Actions builds
@@ -59,5 +59,5 @@ creates and updates its tables itself on startup. For pgAdmin/DBeaver, use an SS
 
 `VITE_*` settings and `AIRREX_SITE_URL` are built into the image, so changing them in `airrex.env` does nothing.
 Set them as GitHub repository variables (Settings → Secrets and variables → Actions → Variables) and re-run the
-**Docker image** workflow. Set `AIRREX_SITE_URL` once the site has its https address, so the AirRex Helper
-extension recognises it.
+**Docker image** workflow. `AIRREX_SITE_URL` defaults to `https://airrex.retinuesoft.com` (the address the AirRex
+Helper extension recognises); set the variable only if the site moves.
